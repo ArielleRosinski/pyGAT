@@ -148,7 +148,7 @@ class SpGraphAttentionLayer(nn.Module):
 
 class GraphAttentionLayerV2(nn.Module):
     """
-    GATv2 layer according to the provided equations.
+    GATv2 layer, vectorized computation without a for loop.
     """
     def __init__(self, in_features, out_features, dropout, alpha, concat=True):
         super(GraphAttentionLayerV2, self).__init__()
@@ -161,22 +161,33 @@ class GraphAttentionLayerV2(nn.Module):
         self.W = nn.Parameter(torch.empty(size=(in_features, out_features)))
         nn.init.xavier_uniform_(self.W.data, gain=1.414)
         
-        # a is now of shape (out_features,), according to the GATv2 specification
-        self.a = nn.Parameter(torch.empty(size=(out_features,1)))
+        # a is now a single vector, not a matrix
+        self.a = nn.Parameter(torch.empty(size=(out_features, 1)))
         nn.init.xavier_uniform_(self.a.data, gain=1.414)
 
         self.leakyrelu = nn.LeakyReLU(self.alpha)
 
     def forward(self, h, adj):
-        Wh = torch.mm(h, self.W)  # h.shape: (N, in_features), Wh.shape: (N, out_features)
-        Wh = self.leakyrelu(Wh)  # Apply nonlinearity to transformed features
+        Wh = torch.mm(h, self.W)  # Linear transformation
+        Wh = self.leakyrelu(Wh)   # Nonlinearity
+        N = Wh.size(0)
+
+        # Compute 'e' by multiplying with 'a' in a batched manner
+        # Here 'a' acts as a shared attention mechanism across the node pairs
+        e = torch.matmul(Wh, self.a).squeeze(1)
+
+        # Reshape to get the attention scores for every node pair
+        e = e.repeat(N, 1)
         
-        # Compute attention coefficients
-        e = torch.matmul(Wh, self.a)
+        # Apply the mask based on the adjacency matrix
         zero_vec = -9e15 * torch.ones_like(e)
         attention = torch.where(adj > 0, e, zero_vec)
+        
+        # Softmax to normalize the attention scores
         attention = F.softmax(attention, dim=1)
         attention = F.dropout(attention, self.dropout, training=self.training)
+
+        # Apply attention scores to the node features matrix
         h_prime = torch.matmul(attention, Wh)
 
         if self.concat:
@@ -186,3 +197,44 @@ class GraphAttentionLayerV2(nn.Module):
 
     def __repr__(self):
         return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
+
+# class GraphAttentionLayerV2(nn.Module):
+#     """
+#     GATv2 layer according to the provided equations.
+#     """
+#     def __init__(self, in_features, out_features, dropout, alpha, concat=True):
+#         super(GraphAttentionLayerV2, self).__init__()
+#         self.dropout = dropout
+#         self.in_features = in_features
+#         self.out_features = out_features
+#         self.alpha = alpha
+#         self.concat = concat
+
+#         self.W = nn.Parameter(torch.empty(size=(in_features, out_features)))
+#         nn.init.xavier_uniform_(self.W.data, gain=1.414)
+        
+#         # a is now of shape (out_features,), according to the GATv2 specification
+#         self.a = nn.Parameter(torch.empty(size=(out_features,1)))
+#         nn.init.xavier_uniform_(self.a.data, gain=1.414)
+
+#         self.leakyrelu = nn.LeakyReLU(self.alpha)
+
+#     def forward(self, h, adj):
+#         Wh = torch.mm(h, self.W)  # h.shape: (N, in_features), Wh.shape: (N, out_features)
+#         Wh = self.leakyrelu(Wh)  # Apply nonlinearity to transformed features
+        
+#         # Compute attention coefficients
+#         e = torch.matmul(Wh, self.a)
+#         zero_vec = -9e15 * torch.ones_like(e)
+#         attention = torch.where(adj > 0, e, zero_vec)
+#         attention = F.softmax(attention, dim=1)
+#         attention = F.dropout(attention, self.dropout, training=self.training)
+#         h_prime = torch.matmul(attention, Wh)
+
+#         if self.concat:
+#             return F.elu(h_prime)
+#         else:
+#             return h_prime
+
+#     def __repr__(self):
+#         return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
