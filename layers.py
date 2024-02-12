@@ -162,7 +162,7 @@ class GraphAttentionLayerV2(nn.Module):
         nn.init.xavier_uniform_(self.W.data, gain=1.414)
         
         # a is now of shape (out_features,), according to the GATv2 specification
-        self.a = nn.Parameter(torch.empty(size=(out_features,)))
+        self.a = nn.Parameter(torch.empty(size=(out_features,1)))
         nn.init.xavier_uniform_(self.a.data, gain=1.414)
 
         self.leakyrelu = nn.LeakyReLU(self.alpha)
