@@ -20,9 +20,10 @@ from models import GAT, SpGAT, GATv2
 parser = argparse.ArgumentParser()
 parser.add_argument('--no-cuda', action='store_true', default=False, help='Disables CUDA training.')
 parser.add_argument('--fastmode', action='store_true', default=False, help='Validate during training pass.')
-parser.add_argument('--sparse', action='store_true', default=False, help='GAT with sparse version or not.')
+#parser.add_argument('--sparse', action='store_true', default=False, help='GAT with sparse version or not.')
+parser.add_argument('--model', type=str, default='GATv2', help='GAT model version.')
 parser.add_argument('--seed', type=int, default=72, help='Random seed.')
-parser.add_argument('--epochs', type=int, default=50, help='Number of epochs to train.') #10000
+parser.add_argument('--epochs', type=int, default=500, help='Number of epochs to train.')  #10000
 parser.add_argument('--lr', type=float, default=0.005, help='Initial learning rate.')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay (L2 loss on parameters).')
 parser.add_argument('--hidden', type=int, default=8, help='Number of hidden units.')
@@ -44,30 +45,31 @@ if args.cuda:
 adj, features, labels, idx_train, idx_val, idx_test = load_data()
 
 # Model and optimizer
-if args.sparse:
+if args.model == 'GAT_sparse':
     model = SpGAT(nfeat=features.shape[1], 
                 nhid=args.hidden, 
                 nclass=int(labels.max()) + 1, 
                 dropout=args.dropout, 
                 nheads=args.nb_heads, 
                 alpha=args.alpha)
-else:
+elif args.model == 'GAT':
     model = GAT(nfeat=features.shape[1], 
                 nhid=args.hidden, 
                 nclass=int(labels.max()) + 1, 
                 dropout=args.dropout, 
                 nheads=args.nb_heads, 
                 alpha=args.alpha)
+elif args.model == 'GATv2':
+    model = GATv2(nfeat=features.shape[1], 
+                    nhid=args.hidden, 
+                    nclass=int(labels.max()) + 1, 
+                    dropout=args.dropout, 
+                    nheads=args.nb_heads, 
+                    alpha=args.alpha)
+    
 optimizer = optim.Adam(model.parameters(), 
                        lr=args.lr, 
                        weight_decay=args.weight_decay)
-
-model = GATv2(nfeat=features.shape[1], 
-                nhid=args.hidden, 
-                nclass=int(labels.max()) + 1, 
-                dropout=args.dropout, 
-                nheads=args.nb_heads, 
-                alpha=args.alpha)
 
 
 if args.cuda:
