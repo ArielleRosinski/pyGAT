@@ -158,7 +158,7 @@ class GraphAttentionLayerV2(nn.Module):
         self.alpha = alpha
         self.concat = concat
 
-        self.W = nn.Parameter(torch.empty(size=(in_features, 2*out_features)))
+        self.W = nn.Parameter(torch.empty(size=(2*in_features, out_features)))
         nn.init.xavier_uniform_(self.W.data, gain=1.414)
         self.a = nn.Parameter(torch.empty(size=(out_features, 1)))
         nn.init.xavier_uniform_(self.a.data, gain=1.414)
@@ -167,8 +167,8 @@ class GraphAttentionLayerV2(nn.Module):
 
     def forward(self, h, adj):
         #Wh = torch.mm(h, self.W) # h.shape: (N, in_features), Wh.shape: (N, out_features)
-        Wh1 = torch.matmul(h,self.W[:, :self.out_features]) #[N, F] @ [F , F'] --> [N, F']
-        Wh2 = torch.matmul(h,self.W[:, self.out_features:])
+        Wh1 = torch.matmul(h,self.W[:self.in_features, :]) #[N, F] @ [F , F'] --> [N, F']
+        Wh2 = torch.matmul(h,self.W[self.in_features:, :])
         e = Wh1 + Wh2 
         e = self.leakyrelu(e)
         e = torch.matmul(e, self.a) #[N=2708, F'=64] @ [F',1] --> [N, 1]
