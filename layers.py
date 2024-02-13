@@ -167,11 +167,11 @@ class GraphAttentionLayerV2(nn.Module):
 
     def forward(self, h, adj):
         #Wh = torch.mm(h, self.W) # h.shape: (N, in_features), Wh.shape: (N, out_features)
-        Wh1 = torch.matmul(h,self.W[:, :self.out_features]) #N, F @ F , F' --> N, F'
+        Wh1 = torch.matmul(h,self.W[:, :self.out_features]) #[N, F] @ [F , F'] --> [N, F']
         Wh2 = torch.matmul(h,self.W[:, self.out_features:])
         e = Wh1 + Wh2 
         e = self.leakyrelu(e)
-        e = torch.matmul(e, self.a) #N, F'--> F'
+        e = torch.matmul(e, self.a) #[N=2708, F'=64] @ [F',1] --> [N, 1]
         #e = self._prepare_attentional_mechanism_input(Wh)
 
         zero_vec = -9e15*torch.ones_like(e)
@@ -185,16 +185,16 @@ class GraphAttentionLayerV2(nn.Module):
         else:
             return h_prime
 
-    def _prepare_attentional_mechanism_input(self, Wh):
-        # Wh.shape (N, out_feature)
-        # self.a.shape (2 * out_feature, 1)
-        # Wh1&2.shape (N, 1)
-        # e.shape (N, N)
-        Wh1 = torch.matmul(Wh, self.a[:self.out_features, :]) 
-        Wh2 = torch.matmul(Wh, self.a[self.out_features:, :])
-        # broadcast add
-        e = Wh1 + Wh2.T
-        return self.leakyrelu(e)
+    # def _prepare_attentional_mechanism_input(self, Wh):
+    #     # Wh.shape (N, out_feature)
+    #     # self.a.shape (2 * out_feature, 1)
+    #     # Wh1&2.shape (N, 1)
+    #     # e.shape (N, N)
+    #     Wh1 = torch.matmul(Wh, self.a[:self.out_features, :]) 
+    #     Wh2 = torch.matmul(Wh, self.a[self.out_features:, :])
+    #     # broadcast add
+    #     e = Wh1 + Wh2.T
+    #     return self.leakyrelu(e)
 
     def __repr__(self):
         return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
