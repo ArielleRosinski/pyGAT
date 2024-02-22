@@ -43,9 +43,12 @@ def load_data(path="./data/cora/", dataset="cora"):
         edges = edges_temp[rows_without_none]
         adj = sp.coo_matrix((np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])), shape=(labels.shape[0], labels.shape[0]), dtype=np.float32)
 
-        idx_train = range(120)
-        idx_val = range(200, 700)
-        idx_test = range(800, 1800)
+        # idx_train = range(120)
+        # idx_val = range(200, 700)
+        # idx_test = range(800, 1800)
+        idx_train = range(140)
+        idx_val = range(200, 500)
+        idx_test = range(500, 1500)
 
     # build symmetric adjacency matrix
     adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
