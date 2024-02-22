@@ -21,11 +21,31 @@ def load_data(path="./data/cora/", dataset="cora"):
     labels = encode_onehot(idx_features_labels[:, -1])
 
     # build graph
-    idx = np.array(idx_features_labels[:, 0], dtype=np.int32)
-    idx_map = {j: i for i, j in enumerate(idx)}
-    edges_unordered = np.genfromtxt("{}{}.cites".format(path, dataset), dtype=np.int32)
-    edges = np.array(list(map(idx_map.get, edges_unordered.flatten())), dtype=np.int32).reshape(edges_unordered.shape)
-    adj = sp.coo_matrix((np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])), shape=(labels.shape[0], labels.shape[0]), dtype=np.float32)
+    if dataset == "cora":
+        idx = np.array(idx_features_labels[:, 0], dtype=np.int32)
+        idx_map = {j: i for i, j in enumerate(idx)}
+        edges_unordered = np.genfromtxt("{}{}.cites".format(path, dataset), dtype=np.int32)
+        edges = np.array(list(map(idx_map.get, edges_unordered.flatten())), dtype=np.int32).reshape(edges_unordered.shape)
+        adj = sp.coo_matrix((np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])), shape=(labels.shape[0], labels.shape[0]), dtype=np.float32)
+
+        idx_train = range(140)
+        idx_val = range(200, 500)
+        idx_test = range(500, 1500)
+
+    elif dataset == "citeseer":
+        idx = idx_features_labels[:, 0]
+        idx_map = {j: i for i, j in enumerate(idx)}
+        edges_unordered = np.genfromtxt("{}{}.cites".format(path, dataset),  dtype=np.dtype(str))
+        edges_temp = np.array(list(map(idx_map.get, edges_unordered.flatten())), dtype=np.dtype(str)).reshape(edges_unordered.shape)
+        edges_temp[edges_temp == 'None'] = '-1'  
+        edges_temp = edges_temp.astype(np.int32)
+        rows_without_none = ~np.any(edges_temp == -1, axis=1)
+        edges = edges_temp[rows_without_none]
+        adj = sp.coo_matrix((np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])), shape=(labels.shape[0], labels.shape[0]), dtype=np.float32)
+
+        idx_train = range(120)
+        idx_val = range(200, 700)
+        idx_test = range(800, 1800)
 
     # build symmetric adjacency matrix
     adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
@@ -33,9 +53,6 @@ def load_data(path="./data/cora/", dataset="cora"):
     features = normalize_features(features)
     adj = normalize_adj(adj + sp.eye(adj.shape[0]))
 
-    idx_train = range(140)
-    idx_val = range(200, 500)
-    idx_test = range(500, 1500)
 
     adj = torch.FloatTensor(np.array(adj.todense()))
     features = torch.FloatTensor(np.array(features.todense()))
