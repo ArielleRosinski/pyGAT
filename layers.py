@@ -51,6 +51,65 @@ class GraphAttentionLayer(nn.Module):
 
     def __repr__(self):
         return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
+    
+class GraphMultiheadAttentionLayer(nn.Module):
+    """
+    Simple GAT layer, similar to https://arxiv.org/abs/1710.10903
+    """
+    def __init__(self, in_features, out_features, n_heads, dropout, alpha, activation, concat=True):
+        super(GraphMultiheadAttentionLayer, self).__init__()
+        self.dropout = dropout
+        self.in_features = in_features
+        self.out_features = out_features
+        self.n_heads = n_heads
+        self.alpha = alpha
+        self.concat = concat
+        self.activation = activation
+
+        self.W = nn.Parameter(torch.empty(size=(in_features, n_heads * out_features)))
+        nn.init.xavier_uniform_(self.W.data, gain=1.414)
+        self.a = nn.Parameter(torch.empty(size=(n_heads, 2*out_features)))
+        nn.init.xavier_uniform_(self.a.data, gain=1.414)
+
+        self.leakyrelu = nn.LeakyReLU(self.alpha)
+
+    def forward(self, data):
+        h, adj = data
+        # Dropout in inputs
+        h = F.dropout(h, self.dropout, training=self.training)
+        # Apply linear projection
+        Wh = torch.mm(h, self.W).view(-1, self.n_heads, self.out_features) # h.shape: (N, in_features), Wh.shape: (N, n_heads, out_features)
+        # Not mentioned in paper, but done in official repo
+        Wh = F.dropout(Wh, self.dropout, training=self.training)
+        e = self._prepare_attentional_mechanism_input(Wh)
+        zero_vec = -9e15*torch.ones_like(e)
+        attention = torch.where(adj.unsqueeze(-1).expand(-1, -1, self.n_heads) > 0, e, zero_vec)
+        attention = F.softmax(attention, dim=1) 
+        # Add stochasticity in neighbourhood
+        attention = F.dropout(attention, self.dropout, training=self.training)
+        # Apply attention
+        h_prime = torch.einsum('bnh,nhf->bhf', attention, Wh)
+
+        if self.concat:
+            h_prime = h_prime.reshape(-1, self.n_heads * self.out_features)
+        else:
+            h_prime = torch.mean(h_prime, dim=1)
+
+        return (h_prime if self.activation is None else self.activation(h_prime), adj)
+
+    def _prepare_attentional_mechanism_input(self, Wh):
+        # Wh.shape (N, out_feature)
+        # self.a.shape (2 * out_feature, 1)
+        # Wh1&2.shape (N, 1)
+        # e.shape (N, N)
+        Wh1 = torch.einsum('nhj,hj->nh', Wh, self.a[:, :self.out_features]).unsqueeze(1) 
+        Wh2 = torch.einsum('nhj,hj->nh', Wh, self.a[:, self.out_features:]).unsqueeze(0)
+        # broadcast add
+        e = Wh1 + Wh2
+        return self.leakyrelu(e) #shape [N,N,H]
+
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
 
 
 class SpecialSpmmFunction(torch.autograd.Function):

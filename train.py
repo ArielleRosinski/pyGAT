@@ -14,7 +14,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 
 from utils import load_data, accuracy
-from models import GAT, SpGAT
+from models import GAT, SpGAT, MultiLayerGAT
 
 # Training settings
 parser = argparse.ArgumentParser()
@@ -58,6 +58,15 @@ else:
                 dropout=args.dropout, 
                 nheads=args.nb_heads, 
                 alpha=args.alpha)
+    
+model = MultiLayerGAT(
+    nfeat=[features.shape[1], 8, int(labels.max()) + 1], 
+    nheads=[8, 1],
+    dropout=args.dropout,
+    alpha=args.alpha,
+    nlayers=2
+)
+
 optimizer = optim.Adam(model.parameters(), 
                        lr=args.lr, 
                        weight_decay=args.weight_decay)
