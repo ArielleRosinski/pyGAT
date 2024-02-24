@@ -44,7 +44,7 @@ if args.cuda:
     torch.cuda.manual_seed(args.seed)
 
 # Load data
-adj, features, labels, idx_train, idx_val, idx_test = load_data(dataset="citeseer")
+adj, features, labels, idx_train, idx_val, idx_test = load_data(dataset="pubmed")
 
 # Model and optimizer
 if args.model == 'GAT_sparse':
