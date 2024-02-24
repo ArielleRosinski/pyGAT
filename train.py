@@ -83,7 +83,14 @@ if args.cuda:
     idx_val = idx_val.cuda()
     idx_test = idx_test.cuda()
 
-features, adj, labels = Variable(features), Variable(adj), Variable(labels)
+mps_device = torch.device("mps")
+model = model.to(mps_device)
+features = features.to(mps_device)
+adj = adj.to(mps_device)
+labels = labels.to(mps_device)
+idx_train = idx_train.to(mps_device)
+idx_val = idx_val.to(mps_device)
+idx_test = idx_test.to(mps_device)
 
 
 def train(epoch):

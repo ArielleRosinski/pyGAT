@@ -2,7 +2,6 @@ import numpy as np
 import scipy.sparse as sp
 import torch
 
-
 def encode_onehot(labels):
     # The classes must be sorted before encoding to enable static class encoding.
     # In other words, make sure the first class always maps to index 0.
@@ -43,9 +42,15 @@ def load_data(path="./data/cora/", dataset="cora"):
         edges = edges_temp[rows_without_none]
         adj = sp.coo_matrix((np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])), shape=(labels.shape[0], labels.shape[0]), dtype=np.float32)
 
-        idx_train = range(120)
-        idx_val = range(200, 700)
-        idx_test = range(800, 1800)
+        labels_tensor = torch.LongTensor(np.where(labels)[1])
+        unique_elements, counts = torch.unique(labels_tensor, return_counts=True)
+        counts_dict = {int(element): count / len(labels)  for element, count in zip(unique_elements, counts)}
+        print(counts_dict)
+
+        random_indices = torch.randperm(len(labels), dtype=torch.long)
+        idx_train = random_indices[:120]
+        idx_val = random_indices[200:700]
+        idx_test = random_indices[800:1800]
 
     # build symmetric adjacency matrix
     adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
@@ -86,7 +91,7 @@ def normalize_features(mx):
 
 def accuracy(output, labels):
     preds = output.max(1)[1].type_as(labels)
-    correct = preds.eq(labels).double()
+    correct = preds.eq(labels)
     correct = correct.sum()
     return correct / len(labels)
 
