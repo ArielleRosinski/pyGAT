@@ -25,7 +25,7 @@ parser.add_argument('--model', type=str, default='GAT_sparse', help='GAT model v
 parser.add_argument('--seed', type=int, default=72, help='Random seed.')
 parser.add_argument('--epochs', type=int, default=10000, help='Number of epochs to train.')  #10000
 parser.add_argument('--lr', type=float, default=0.005, help='Initial learning rate.')
-parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay (L2 loss on parameters).') #5e-4
+parser.add_argument('--weight_decay', type=float, default=0.001, help='Weight decay (L2 loss on parameters).') #5e-4
 parser.add_argument('--hidden', type=int, default=8, help='Number of hidden units.')
 parser.add_argument('--nb_heads', type=int, default=8, help='Number of head attentions.')
 parser.add_argument('--dropout', type=float, default=0.6, help='Dropout rate (1 - keep probability).') #0.6
@@ -47,27 +47,12 @@ if args.cuda:
 adj, features, labels, idx_train, idx_val, idx_test = load_data(dataset="pubmed")
 
 # Model and optimizer
-if args.model == 'GAT_sparse':
-    model = SpGAT(nfeat=features.shape[1], 
+model = SpGAT(nfeat=features.shape[1], 
                 nhid=args.hidden, 
                 nclass=int(labels.max()) + 1, 
                 dropout=args.dropout, 
                 nheads=args.nb_heads, 
                 alpha=args.alpha)
-elif args.model == 'GAT':
-    model = GAT(nfeat=features.shape[1], 
-                nhid=args.hidden, 
-                nclass=int(labels.max()) + 1, 
-                dropout=args.dropout, 
-                nheads=args.nb_heads, 
-                alpha=args.alpha)
-elif args.model == 'GATv2':
-    model = GATv2(nfeat=features.shape[1], 
-                    nhid=args.hidden, 
-                    nclass=int(labels.max()) + 1, 
-                    dropout=args.dropout, 
-                    nheads=args.nb_heads, 
-                    alpha=args.alpha)
     
 optimizer = optim.Adam(model.parameters(), 
                        lr=args.lr, 
@@ -84,7 +69,6 @@ if args.cuda:
     idx_test = idx_test.cuda()
 
 features, adj, labels = Variable(features), Variable(adj), Variable(labels)
-
 
 def train(epoch):
     t = time.time()

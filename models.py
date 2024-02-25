@@ -38,17 +38,21 @@ class SpGAT(nn.Module):
         for i, attention in enumerate(self.attentions):
             self.add_module('attention_{}'.format(i), attention)
 
-        self.out_att = SpGraphAttentionLayer(nhid * nheads, 
+        self.out_attentions = [
+            SpGraphAttentionLayer(nhid * nheads, 
                                              nclass, 
                                              dropout=dropout, 
                                              alpha=alpha, 
                                              concat=False)
+        ]
+        for i, attention in enumerate(self.out_attentions):
+            self.add_module('attention_out_{}'.format(i), attention)
 
     def forward(self, x, adj):
         x = F.dropout(x, self.dropout, training=self.training)
         x = torch.cat([att(x, adj) for att in self.attentions], dim=1)
         x = F.dropout(x, self.dropout, training=self.training)
-        x = F.elu(self.out_att(x, adj))
+        x = torch.mean(torch.stack([att(x, adj) for att in self.out_attentions], dim=1),dim=1)
         return F.log_softmax(x, dim=1)
     
 

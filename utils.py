@@ -65,7 +65,6 @@ def load_data(path="./data/cora/", dataset="cora"):
         idx_train = torch.nonzero(g.ndata['train_mask'], as_tuple=False).squeeze()
         idx_val = torch.nonzero(g.ndata['val_mask'], as_tuple=False).squeeze()
         idx_test = torch.nonzero(g.ndata['test_mask'], as_tuple=False).squeeze()
-        
         src, dst = g.edges()
         num_nodes = g.num_nodes()
 
