@@ -21,7 +21,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--no-cuda', action='store_true', default=False, help='Disables CUDA training.')
 parser.add_argument('--fastmode', action='store_true', default=False, help='Validate during training pass.')
 #parser.add_argument('--sparse', action='store_true', default=False, help='GAT with sparse version or not.')
-parser.add_argument('--model', type=str, default='GAT', help='GAT model version.')
+parser.add_argument('--model', type=str, default='GAT_sparse', help='GAT model version.')
 parser.add_argument('--seed', type=int, default=72, help='Random seed.')
 parser.add_argument('--epochs', type=int, default=10000, help='Number of epochs to train.')  #10000
 parser.add_argument('--lr', type=float, default=0.005, help='Initial learning rate.')
@@ -123,6 +123,7 @@ def compute_test():
           "loss= {:.4f}".format(loss_test.data.item()),
           "accuracy= {:.4f}".format(acc_test.data.item()))
 
+print("start training")
 # Train model
 t_total = time.time()
 loss_values = []
