@@ -145,7 +145,7 @@ def load_data_ppi(batch_size):
             # shape = (N, N) - an entry of 1 in position (i,j) means that there is a connection between nodes 
             adjacency_matrix = nx.adjacency_matrix(graph)
             # row-normalize sparse adjacency matrix
-            adjacency_matrix = normalize_adj(adjacency_matrix + sp.eye(adjacency_matrix.shape[0]))
+            # adjacency_matrix = normalize_adj(adjacency_matrix + sp.eye(adjacency_matrix.shape[0]))
             # obtain dense representation
             adjacency_matrix = torch.tensor(np.array(adjacency_matrix.todense()), dtype=torch.float)
             adjacency_matrix_list.append(adjacency_matrix)

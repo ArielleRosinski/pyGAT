@@ -31,13 +31,13 @@ parser.add_argument('--sparse', action='store_true', default=False, help='GAT wi
 parser.add_argument('--seed', type=int, default=72, help='Random seed.')
 parser.add_argument('--epochs', type=int, default=10000, help='Number of epochs to train.')
 parser.add_argument('--lr', type=float, default=0.005, help='Initial learning rate.')
-parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay (L2 loss on parameters).')
+parser.add_argument('--weight_decay', type=float, default=0.0, help='Weight decay (L2 loss on parameters).')
 parser.add_argument('--hidden', type=int, default=8, help='Number of hidden units.')
 parser.add_argument('--nb_heads', type=int, default=8, help='Number of head attentions.')
-parser.add_argument('--dropout', type=float, default=0.6, help='Dropout rate (1 - keep probability).')
+parser.add_argument('--dropout', type=float, default=0.0, help='Dropout rate (1 - keep probability).')
 parser.add_argument('--alpha', type=float, default=0.2, help='Alpha for the leaky_relu.')
 parser.add_argument('--patience', type=int, default=100, help='Patience')
-parser.add_argument('--batch_size', type=int, default=1, help='Number of graphs that are passed during training')
+parser.add_argument('--batch_size', type=int, default=2, help='Number of graphs that are passed during training')
 
 args = parser.parse_args()
 
@@ -54,17 +54,18 @@ data_loader_train, data_loader_val, data_loader_test = load_data_ppi(args.batch_
 
 # Model and optimizer
 
-model = GAT_PPI(nfeat=PPI_NUM_INPUT_FEATURES, 
-            nhid=args.hidden, 
-            nclass=PPI_NUM_CLASSES, 
-            dropout=args.dropout, 
-            nheads=args.nb_heads, 
-            alpha=args.alpha)
+model = GAT(nfeat=[PPI_NUM_INPUT_FEATURES, 64, 64, PPI_NUM_CLASSES],
+            dropout=args.dropout,
+            alpha=args.alpha, 
+            nheads=[4, 4, 6],
+            nlayers=3,
+        )
 optimizer = optim.Adam(model.parameters(), 
                        lr=args.lr, 
                        weight_decay=args.weight_decay)
 
-model.to(device)
+device = torch.device("mps")
+model = model.to(device)
 
 def compute_f1_score(unnormalized_output, gt_labels):
     pred = (unnormalized_output > 0).float().cpu().numpy()
@@ -78,9 +79,9 @@ def train(epoch):
     model.train()
 
     for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_train):
-        features.to(device)
-        gt_labels.to(device)
-        adj.to(device)
+        features = features.to(device)
+        gt_labels = gt_labels.to(device)
+        adj = adj.to(device)
         
         unnormalized_output = model(features, adj)
         loss_train = loss_fn(unnormalized_output, gt_labels)
@@ -102,9 +103,9 @@ def train(epoch):
 
     loss_val_list = []
     for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_val):
-        features.to(device)
-        gt_labels.to(device)
-        adj.to(device)
+        features = features.to(device)
+        gt_labels = gt_labels.to(device)
+        adj = adj.to(device)
         
         unnormalized_output = model(features, adj)
         loss_val = loss_fn(unnormalized_output, gt_labels)
@@ -131,9 +132,9 @@ def compute_test():
     gt_labels_list = []
 
     for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
-        features.to(device)
-        gt_labels.to(device)
-        adj.to(device)
+        features = features.to(device)
+        gt_labels = gt_labels.to(device)
+        adj = adj.to(device)
         
         unnormalized_output = model(features, adj)
         loss_test = loss_fn(unnormalized_output, gt_labels)
