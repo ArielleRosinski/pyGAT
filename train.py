@@ -14,83 +14,147 @@ import torch.optim as optim
 from torch.autograd import Variable
 
 from utils import load_data, accuracy
-from models import GAT, SpGAT, GATv2
+from layers import GraphAttentionLayer, GraphAttentionLayerV2, SpGraphAttentionLayer
+from models import GAT
+
+# Cora specific constants
+CORA_NUM_INPUT_FEATURES = 1433
+CORA_NUM_CLASSES = 7
+# Citeseer specific constants
+CITESEER_NUM_INPUT_FEATURES = 3703
+CITESEER_NUM_CLASSES = 6
+# Cora specific constants
+PUBMED_NUM_INPUT_FEATURES = 500
+PUBMED_NUM_CLASSES = 3
 
 # Training settings
 parser = argparse.ArgumentParser()
 parser.add_argument('--no-cuda', action='store_true', default=False, help='Disables CUDA training.')
 parser.add_argument('--fastmode', action='store_true', default=False, help='Validate during training pass.')
 #parser.add_argument('--sparse', action='store_true', default=False, help='GAT with sparse version or not.')
-parser.add_argument('--model', type=str, default='GAT_sparse', help='GAT model version.')
+parser.add_argument('--dataset', type=str, default='citeseer', choices=['cora', 'pubmed', 'citeseer'], help='Dataset to use')
+parser.add_argument('--model', type=str, default='GAT', choices=['GAT_sparse', 'GAT', 'GATv2'], help='GAT model version.')
 parser.add_argument('--seed', type=int, default=72, help='Random seed.')
 parser.add_argument('--epochs', type=int, default=10000, help='Number of epochs to train.')  #10000
-parser.add_argument('--lr', type=float, default=0.005, help='Initial learning rate.')
-parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay (L2 loss on parameters).') #5e-4
-parser.add_argument('--hidden', type=int, default=8, help='Number of hidden units.')
-parser.add_argument('--nb_heads', type=int, default=8, help='Number of head attentions.')
-parser.add_argument('--dropout', type=float, default=0.6, help='Dropout rate (1 - keep probability).') #0.6
-parser.add_argument('--alpha', type=float, default=0.2, help='Alpha for the leaky_relu.')
+#parser.add_argument('--lr', type=float, default=0.005, help='Initial learning rate.')
+#parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay (L2 loss on parameters).') #5e-4
+#parser.add_argument('--dropout', type=float, default=0.6, help='Dropout rate (1 - keep probability).') #0.6
+#parser.add_argument('--alpha', type=float, default=0.2, help='Alpha for the leaky_relu.')
 parser.add_argument('--patience', type=int, default=100, help='Patience') #100
 
 args = parser.parse_args()
-args.cuda = not args.no_cuda and torch.cuda.is_available()
 
-print(args.model)
+if args.dataset == "cora":
+    gat_config = {
+        "nlayers": 2,
+        "nheads": [8, 1],
+        "nfeats": [CORA_NUM_INPUT_FEATURES, 8, CORA_NUM_CLASSES],
+        "skip_connection": False,
+        "alpha": 0.2,
+        "dropout": 0.6,
+    }
+    train_config = {
+        "lr": 0.005,
+        "weight_decay": 5e-4,
+    }
+elif args.dataset == "citeseer":
+    gat_config = {
+        "nlayers": 2,
+        "nheads": [8, 1],
+        "nfeats": [CITESEER_NUM_INPUT_FEATURES, 8, CITESEER_NUM_CLASSES],
+        "skip_connection": False,
+        "alpha": 0.2,
+        "dropout": 0.6,
+    }
+    train_config = {
+        "lr": 0.005,
+        "weight_decay": 5e-4,
+    }
+elif args.dataset == "pubmed":
+    gat_config = {
+        "nlayers": 2,
+        "nheads": [8, 8],
+        "nfeats": [PUBMED_NUM_INPUT_FEATURES, 8, PUBMED_NUM_CLASSES],
+        "skip_connection": False,
+        "alpha": 0.2,
+        "dropout": 0.6,
+    }
+    train_config = {
+        "lr": 0.01,
+        "weight_decay": 0.001,
+    }
+else:
+    raise ValueError("Dataset not known")
+
+args.cuda = not args.no_cuda and torch.cuda.is_available()
 
 random.seed(args.seed)
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
 if args.cuda:
     torch.cuda.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
 
 # Load data
-adj, features, labels, idx_train, idx_val, idx_test = load_data(dataset="pubmed")
+adj, features, labels, idx_train, idx_val, idx_test = load_data(dataset=args.dataset)
 
-# Model and optimizer
-if args.model == 'GAT_sparse':
-    model = SpGAT(nfeat=features.shape[1], 
-                nhid=args.hidden, 
-                nclass=int(labels.max()) + 1, 
-                dropout=args.dropout, 
-                nheads=args.nb_heads, 
-                alpha=args.alpha)
-elif args.model == 'GAT':
-    model = GAT(nfeat=features.shape[1], 
-                nhid=args.hidden, 
-                nclass=int(labels.max()) + 1, 
-                dropout=args.dropout, 
-                nheads=args.nb_heads, 
-                alpha=args.alpha)
-elif args.model == 'GATv2':
-    model = GATv2(nfeat=features.shape[1], 
-                    nhid=args.hidden, 
-                    nclass=int(labels.max()) + 1, 
-                    dropout=args.dropout, 
-                    nheads=args.nb_heads, 
-                    alpha=args.alpha)
-    
+print(f'Number of nodes: {features.shape[0]}')
+print(f'Number of edges: {(torch.count_nonzero(adj).item()-features.shape[0])//2}')
+print(f'Number of input features: {features.shape[1]}')
+print(f'Number of classes: {torch.unique(labels).shape[0]}')
+print(f'Number of training nodes: {idx_train.shape[0]}')
+print(f'Number of validation nodes: {idx_val.shape[0]}')
+print(f'Number of test nodes: {idx_test.shape[0]}')
+
+# Select the appropiate layer type
+layer_type = {
+    'GAT_sparse': SpGraphAttentionLayer,
+    'GAT': GraphAttentionLayer,
+    'GATv2': GraphAttentionLayerV2,
+}[args.model]
+# Create model
+model = GAT(nfeat=gat_config["nfeats"], 
+            nheads=gat_config["nheads"],
+            nlayers=gat_config["nlayers"],
+            dropout=gat_config["dropout"],
+            alpha=gat_config["alpha"],
+            layer_type=layer_type,
+            skip_connection=gat_config["skip_connection"])
+ 
 optimizer = optim.Adam(model.parameters(), 
-                       lr=args.lr, 
-                       weight_decay=args.weight_decay)
-
-
-if args.cuda:
-    model.cuda()
-    features = features.cuda()
-    adj = adj.cuda()
-    labels = labels.cuda()
-    idx_train = idx_train.cuda()
-    idx_val = idx_val.cuda()
-    idx_test = idx_test.cuda()
+                       lr=train_config["lr"], 
+                       weight_decay=train_config["weight_decay"])
 
 features, adj, labels = Variable(features), Variable(adj), Variable(labels)
 
+# Select a backend
+if args.cuda:
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available() and args.model != 'GAT_sparse':
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
+
+# Move tensor to appropiate device
+model = model.to(device)
+features = features.to(device)
+adj = adj.to(device)
+labels = labels.to(device)
+idx_train = idx_train.to(device)
+idx_val = idx_val.to(device)
+idx_test = idx_test.to(device)
+
+def compute_log_logits(output):
+    return F.log_softmax(F.elu(output), dim=1)
 
 def train(epoch):
     t = time.time()
     model.train()
     optimizer.zero_grad()
-    output = model(features, adj)
+    output = compute_log_logits(model(features, adj))
     loss_train = F.nll_loss(output[idx_train], labels[idx_train])
     acc_train = accuracy(output[idx_train], labels[idx_train])
     loss_train.backward()
@@ -100,7 +164,7 @@ def train(epoch):
         # Evaluate validation set performance separately,
         # deactivates dropout during validation run.
         model.eval()
-        output = model(features, adj)
+        output = compute_log_logits(model(features, adj))
 
     loss_val = F.nll_loss(output[idx_val], labels[idx_val])
     acc_val = accuracy(output[idx_val], labels[idx_val])
@@ -116,7 +180,7 @@ def train(epoch):
 
 def compute_test():
     model.eval()
-    output = model(features, adj)
+    output = compute_log_logits(model(features, adj))
     loss_test = F.nll_loss(output[idx_test], labels[idx_test])
     acc_test = accuracy(output[idx_test], labels[idx_test])
     print("Test set results:",

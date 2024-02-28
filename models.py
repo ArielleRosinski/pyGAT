@@ -5,69 +5,31 @@ from layers import GraphAttentionLayer, SpGraphAttentionLayer, GraphAttentionLay
 
 
 class GAT(nn.Module):
-    def __init__(self, nfeat, nhid, nclass, dropout, alpha, nheads):
+    def __init__(self, nfeat, nheads, nlayers, dropout, alpha, layer_type=GraphAttentionLayer, skip_connection=False):
         """Dense version of GAT."""
         super(GAT, self).__init__()
         self.dropout = dropout
+        nheads = [1] + nheads
+        self.gat_layers = []      
 
-        self.attentions = [GraphAttentionLayer(nfeat, nhid, dropout=dropout, alpha=alpha, concat=True) for _ in range(nheads)]
-        for i, attention in enumerate(self.attentions):
-            self.add_module('attention_{}'.format(i), attention)
-
-        self.out_att = GraphAttentionLayer(nhid * nheads, nclass, dropout=dropout, alpha=alpha, concat=False)
-
-    def forward(self, x, adj):
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = torch.cat([att(x, adj) for att in self.attentions], dim=1)
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = F.elu(self.out_att(x, adj))
-        return F.log_softmax(x, dim=1)
-
-
-class SpGAT(nn.Module):
-    def __init__(self, nfeat, nhid, nclass, dropout, alpha, nheads):
-        """Sparse version of GAT."""
-        super(SpGAT, self).__init__()
-        self.dropout = dropout
-
-        self.attentions = [SpGraphAttentionLayer(nfeat, 
-                                                 nhid, 
-                                                 dropout=dropout, 
-                                                 alpha=alpha, 
-                                                 concat=True) for _ in range(nheads)]
-        for i, attention in enumerate(self.attentions):
-            self.add_module('attention_{}'.format(i), attention)
-
-        self.out_att = SpGraphAttentionLayer(nhid * nheads, 
-                                             nclass, 
-                                             dropout=dropout, 
-                                             alpha=alpha, 
-                                             concat=False)
+        for i in range(nlayers):
+            self.gat_layers.append([])
+            for j in range(nheads[i+1]): 
+                layer = layer_type(
+                    in_features=nfeat[i] * nheads[i], 
+                    out_features=nfeat[i+1], 
+                    dropout=dropout, 
+                    alpha=alpha,
+                    concat=True if i < nlayers - 1 else False,
+                    skip_connection = skip_connection,
+                )
+                self.gat_layers[i].append(layer)
+                self.add_module('attention_layer_{}_head_{}'.format(i+1,j+1), layer)
 
     def forward(self, x, adj):
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = torch.cat([att(x, adj) for att in self.attentions], dim=1)
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = F.elu(self.out_att(x, adj))
-        return F.log_softmax(x, dim=1)
-    
-
-class GATv2(nn.Module):
-    def __init__(self, nfeat, nhid, nclass, dropout, alpha, nheads):
-        """Dense version of GAT."""
-        super(GATv2, self).__init__()
-        self.dropout = dropout
-
-        self.attentions = [GraphAttentionLayerV2(nfeat, nhid, dropout=dropout, alpha=alpha, concat=True) for _ in range(nheads)]
-        for i, attention in enumerate(self.attentions):
-            self.add_module('attention_{}'.format(i), attention)
-
-        self.out_att = GraphAttentionLayerV2(nhid * nheads, nclass, dropout=dropout, alpha=alpha, concat=False)
-
-    def forward(self, x, adj):
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = torch.cat([att(x, adj) for att in self.attentions], dim=1)
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = F.elu(self.out_att(x, adj))
-        return F.log_softmax(x, dim=1)
-
+        for i in range(len(self.gat_layers)):
+            if i < len(self.gat_layers) - 1:
+                x = torch.cat([att(x, adj) for att in self.gat_layers[i]], dim=1)
+            else:
+                x = torch.mean(torch.stack([att(x, adj) for att in self.gat_layers[i]], dim=1), dim=1)
+        return x
