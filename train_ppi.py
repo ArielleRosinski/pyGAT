@@ -71,7 +71,7 @@ if args.cuda:
 # Select a backend
 if args.cuda:
     device = torch.device("cuda")
-elif torch.backends.mps.is_available() and args.model != 'GAT_sparse':
+elif not args.no_cuda and torch.backends.mps.is_available() and args.model != 'GAT_sparse':
     device = torch.device("mps")
 else:
     device = torch.device("cpu")
