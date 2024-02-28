@@ -1,10 +1,7 @@
 import numpy as np
 import scipy.sparse as sp
 import torch
-import dgl
-from dgl.data import PubmedGraphDataset, CiteseerGraphDataset
-from dgl import AddSelfLoop
-from dgl import to_networkx
+from scipy.sparse import load_npz
 
 
 def encode_onehot(labels):
@@ -36,23 +33,16 @@ def load_data(path="./data/cora/", dataset="cora"):
         idx_test = range(500, 1500)
     
     elif dataset == "pubmed" or dataset == "citeseer":
-        transform = AddSelfLoop()  # Add self-loops
-        data = PubmedGraphDataset(transform=transform) if dataset == "pubmed" else CiteseerGraphDataset(transform=transform)
+        dgl_folder = "pubmed_dgl" if dataset == "pubmed" else "citeseer_dgl"
 
-        g = data[0]  # Get the first graph object from the dataset
-        features = g.ndata['feat']  # Node features
-        labels = g.ndata['label']  # Node labels
+        features = torch.load(f'{dgl_folder}/features.pt')
+        labels = torch.load(f'{dgl_folder}/labels.pt')
 
-        idx_train = torch.nonzero(g.ndata['train_mask'], as_tuple=False).squeeze()
-        idx_val = torch.nonzero(g.ndata['val_mask'], as_tuple=False).squeeze()
-        idx_test = torch.nonzero(g.ndata['test_mask'], as_tuple=False).squeeze()
+        idx_train = torch.load(f'{dgl_folder}/idx_train.pt')
+        idx_val = torch.load(f'{dgl_folder}/idx_val.pt')
+        idx_test = torch.load(f'{dgl_folder}/idx_test.pt')
         
-        src, dst = g.edges()
-        num_nodes = g.num_nodes()
-
-        adj = sp.coo_matrix((torch.ones(src.shape[0]), (src.numpy(), dst.numpy())),
-                                shape=(num_nodes, num_nodes),
-                                dtype=np.float32)
+        adj = load_npz(f'{dgl_folder}/adj_sparse.npz')
 
 
     # build symmetric adjacency matrix
