@@ -20,7 +20,7 @@ def load_data(path="./data/cora/", dataset="cora"):
     """Load citation network dataset (cora only for now)"""
     print('Loading {} dataset...'.format(dataset))
 
-    if dataset == "cora": #or dataset == "citeseer"
+    if dataset == "cora": 
         idx_features_labels = np.genfromtxt("{}{}.content".format(path, dataset), dtype=np.dtype(str))
         features = sp.csr_matrix(idx_features_labels[:, 1:-1], dtype=np.float32)
         labels = encode_onehot(idx_features_labels[:, -1])
