@@ -181,7 +181,7 @@ best_epoch = 0
 for epoch in range(args.epochs):
     loss_values.append(train(epoch))
 
-    torch.save(model.state_dict(), '{}.pkl'.format(epoch))
+    torch.save(model.state_dict(), '{}_{}.pkl'.format(epoch, args.dataset))
     if loss_values[-1] < best:
         best = loss_values[-1]
         best_epoch = epoch
