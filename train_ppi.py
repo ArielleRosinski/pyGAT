@@ -15,7 +15,7 @@ from torch.autograd import Variable
 
 from load_data_ppi import load_data_ppi
 from models import GAT
-from layers import GraphAttentionLayer, GraphAttentionLayerV2, SpGraphAttentionLayer
+from layers import GraphAttentionLayer, GraphAttentionLayerV2, SpGraphAttentionLayer, SpGraphAttentionLayerV2
 from sklearn.metrics import f1_score
 
 # PPI specific constants
@@ -28,7 +28,7 @@ parser.add_argument('--no-cuda', action='store_true', default=False, help='Disab
 parser.add_argument('--fastmode', action='store_true', default=False, help='Validate during training pass.')
 #parser.add_argument('--sparse', action='store_true', default=False, help='GAT with sparse version or not.')
 parser.add_argument('--dataset', type=str, default='ppi', choices=['ppi'], help='Dataset to use')
-parser.add_argument('--model', type=str, default='GAT', choices=['GAT_sparse', 'GAT', 'GATv2'], help='GAT model version.')
+parser.add_argument('--model', type=str, default='GAT', choices=['GAT_sparse', 'GAT', 'GATv2', 'GATv2_sparse'], help='GAT model version.')
 parser.add_argument('--seed', type=int, default=72, help='Random seed.')
 parser.add_argument('--epochs', type=int, default=10000, help='Number of epochs to train.')
 #parser.add_argument('--lr', type=float, default=0.005, help='Initial learning rate.')
@@ -71,7 +71,7 @@ if args.cuda:
 # Select a backend
 if args.cuda:
     device = torch.device("cuda")
-elif not args.no_cuda and torch.backends.mps.is_available() and args.model != 'GAT_sparse':
+elif not args.no_cuda and torch.backends.mps.is_available() and args.model not in ['GAT_sparse','GATv2_sparse']:
     device = torch.device("mps")
 else:
     device = torch.device("cpu")
@@ -84,6 +84,7 @@ layer_type = {
     'GAT_sparse': SpGraphAttentionLayer,
     'GAT': GraphAttentionLayer,
     'GATv2': GraphAttentionLayerV2,
+    'GATv2_sparse': SpGraphAttentionLayerV2,
 }[args.model]
 
 # Create model

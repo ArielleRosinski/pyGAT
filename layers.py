@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch_scatter import scatter_max
 
 
 class GraphAttentionLayer(nn.Module):
@@ -140,7 +141,9 @@ class SpGraphAttentionLayer(nn.Module):
         edge_h = torch.cat((Wh[edge[0, :], :], Wh[edge[1, :], :]), dim=1).t()
         # edge: 2*D x E
 
-        edge_e = torch.exp(-self.leakyrelu(self.a.mm(edge_h).squeeze()))
+        edge_e = self.leakyrelu(self.a.mm(edge_h).squeeze())
+        edge_e_max, _ = scatter_max(edge_e, edge[0, :])
+        edge_e = torch.exp(edge_e - edge_e_max[edge[0, :]])
         assert not torch.isnan(edge_e).any()
         # edge_e: E
 
@@ -223,6 +226,90 @@ class GraphAttentionLayerV2(nn.Module):
         if self.concat:
             return F.elu(h_prime)
         else:
+            return h_prime
+
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
+    
+class SpGraphAttentionLayerV2(nn.Module):
+    """
+    Sparse version GAT layer, similar to https://arxiv.org/abs/1710.10903
+    """
+
+    def __init__(self, in_features, out_features, dropout, alpha, concat=True, skip_connection=False):
+        super(SpGraphAttentionLayerV2, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.alpha = alpha
+        self.concat = concat
+        self.skip_connection = skip_connection
+        
+        self.W = nn.Parameter(torch.empty(size=(2*in_features, out_features)))
+        nn.init.xavier_normal_(self.W.data, gain=1.414)
+                
+        self.a = nn.Parameter(torch.zeros(size=(1, out_features)))
+        nn.init.xavier_normal_(self.a.data, gain=1.414)
+
+        if self.skip_connection:
+            self.skip_projection = nn.Parameter(torch.empty(size=(in_features, out_features)))
+            nn.init.xavier_uniform_(self.skip_projection.data, gain=1.414)
+
+        self.dropout = dropout
+        self.leakyrelu = nn.LeakyReLU(self.alpha)
+        self.special_spmm = SpecialSpmm()
+
+    def forward(self, input, adj):
+        dv = 'cuda' if input.is_cuda else 'cpu'
+
+        N = input.size()[0]
+        edge = adj.nonzero().t()
+
+        # Add dropout to the inputs
+        h = F.dropout(input, self.dropout, training=self.training)
+        # Apply linear projection
+        Whi = torch.matmul(h,self.W[:self.in_features, :]) #[N, F] @ [F , F'] --> [N, F']
+        Whj = torch.matmul(h,self.W[self.in_features:, :])
+        # In the official repo, they add dropout after the linear projection
+        Whi = F.dropout(Whi, self.dropout, training=self.training)
+        Whj = F.dropout(Whj, self.dropout, training=self.training)
+        # h: N x out
+        assert not torch.isnan(Whi).any()
+        assert not torch.isnan(Whj).any()
+
+        # Self-attention on the nodes - Shared attention mechanism ( (i,j) = 1 means that there is an edge j -> i)
+        edge_h = (Whi[edge[0, :], :] + Whj[edge[1, :], :]).t()
+        # edge: D x E
+
+        edge_e = self.a.mm(self.leakyrelu(edge_h)).squeeze()
+        # Softmax trick to improve numerical stability
+        edge_e_max, _ = scatter_max(edge_e, edge[0, :])
+        edge_e = torch.exp(edge_e - edge_e_max[edge[0, :]])
+        assert not torch.isnan(edge_e).any()
+        # edge_e: E
+
+        e_rowsum = self.special_spmm(edge, edge_e, torch.Size([N, N]), torch.ones(size=(N,1), device=dv))
+        # e_rowsum: N x 1
+
+        edge_e = F.dropout(edge_e, self.dropout, training=self.training)
+        # edge_e: E
+
+        h_prime = self.special_spmm(edge, edge_e, torch.Size([N, N]), Whi)
+        assert not torch.isnan(h_prime).any()
+        # h_prime: N x out
+        
+        h_prime = h_prime.div(e_rowsum)
+        # h_prime: N x out
+        assert not torch.isnan(h_prime).any()
+
+        # Add skip connection
+        if self.skip_connection:
+            h_prime += torch.mm(h, self.skip_projection)
+
+        if self.concat:
+            # if this layer is not last layer,
+            return F.elu(h_prime)
+        else:
+            # if this layer is last layer,
             return h_prime
 
     def __repr__(self):

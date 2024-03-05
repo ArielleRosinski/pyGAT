@@ -14,7 +14,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 
 from utils import load_data, accuracy
-from layers import GraphAttentionLayer, GraphAttentionLayerV2, SpGraphAttentionLayer
+from layers import GraphAttentionLayer, GraphAttentionLayerV2, SpGraphAttentionLayer, SpGraphAttentionLayerV2
 from models import GAT
 
 # Cora specific constants
@@ -32,8 +32,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--no-cuda', action='store_true', default=False, help='Disables CUDA training.')
 parser.add_argument('--fastmode', action='store_true', default=False, help='Validate during training pass.')
 #parser.add_argument('--sparse', action='store_true', default=False, help='GAT with sparse version or not.')
-parser.add_argument('--dataset', type=str, default='citeseer', choices=['cora', 'pubmed', 'citeseer'], help='Dataset to use')
-parser.add_argument('--model', type=str, default='GAT', choices=['GAT_sparse', 'GAT', 'GATv2'], help='GAT model version.')
+parser.add_argument('--dataset', type=str, default='cora', choices=['cora', 'pubmed', 'citeseer'], help='Dataset to use')
+parser.add_argument('--model', type=str, default='GAT_sparse', choices=['GAT_sparse', 'GAT', 'GATv2', 'GATv2_sparse'], help='GAT model version.')
 parser.add_argument('--seed', type=int, default=72, help='Random seed.')
 parser.add_argument('--epochs', type=int, default=10000, help='Number of epochs to train.')  #10000
 #parser.add_argument('--lr', type=float, default=0.005, help='Initial learning rate.')
@@ -114,6 +114,7 @@ layer_type = {
     'GAT_sparse': SpGraphAttentionLayer,
     'GAT': GraphAttentionLayer,
     'GATv2': GraphAttentionLayerV2,
+    'GATv2_sparse': SpGraphAttentionLayerV2,
 }[args.model]
 # Create model
 model = GAT(nfeat=gat_config["nfeats"], 
@@ -133,7 +134,7 @@ features, adj, labels = Variable(features), Variable(adj), Variable(labels)
 # Select a backend
 if args.cuda:
     device = torch.device("cuda")
-elif not args.no_cuda and torch.backends.mps.is_available() and args.model != 'GAT_sparse':
+elif not args.no_cuda and torch.backends.mps.is_available() and args.model not in ['GAT_sparse','GATv2_sparse']:
     device = torch.device("mps")
 else:
     device = torch.device("cpu")
