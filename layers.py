@@ -8,23 +8,32 @@ class GraphAttentionLayer(nn.Module):
     """
     Simple GAT layer, similar to https://arxiv.org/abs/1710.10903
     """
-    def __init__(self, in_features, out_features, dropout, alpha, concat=True):
+    def __init__(self, in_features, out_features, dropout, alpha, concat=True, skip_connection=False):
         super(GraphAttentionLayer, self).__init__()
         self.dropout = dropout
         self.in_features = in_features
         self.out_features = out_features
         self.alpha = alpha
         self.concat = concat
+        self.skip_connection = skip_connection
 
         self.W = nn.Parameter(torch.empty(size=(in_features, out_features)))
         nn.init.xavier_uniform_(self.W.data, gain=1.414)
         self.a = nn.Parameter(torch.empty(size=(2*out_features, 1)))
         nn.init.xavier_uniform_(self.a.data, gain=1.414)
 
+        if self.skip_connection:
+            self.skip_projection = nn.Parameter(torch.empty(size=(in_features, out_features)))
+            nn.init.xavier_uniform_(self.skip_projection.data, gain=1.414)
+
         self.leakyrelu = nn.LeakyReLU(self.alpha)
 
     def forward(self, h, adj):
+        # Add dropout to the inputs
+        h = F.dropout(h, self.dropout, training=self.training)
         Wh = torch.mm(h, self.W) # h.shape: (N, in_features), Wh.shape: (N, out_features)
+        # In the official repo, they add dropout after the linear projection
+        Wh = F.dropout(Wh, self.dropout, training=self.training)
         e = self._prepare_attentional_mechanism_input(Wh)
 
         zero_vec = -9e15*torch.ones_like(e)
@@ -32,6 +41,10 @@ class GraphAttentionLayer(nn.Module):
         attention = F.softmax(attention, dim=1)
         attention = F.dropout(attention, self.dropout, training=self.training)
         h_prime = torch.matmul(attention, Wh)
+
+        # Add skip connection
+        if self.skip_connection:
+            h_prime += torch.mm(h, self.skip_projection)
 
         if self.concat:
             return F.elu(h_prime)
@@ -86,20 +99,25 @@ class SpGraphAttentionLayer(nn.Module):
     Sparse version GAT layer, similar to https://arxiv.org/abs/1710.10903
     """
 
-    def __init__(self, in_features, out_features, dropout, alpha, concat=True):
+    def __init__(self, in_features, out_features, dropout, alpha, concat=True, skip_connection=False):
         super(SpGraphAttentionLayer, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.alpha = alpha
         self.concat = concat
-
+        self.skip_connection = skip_connection
+        
         self.W = nn.Parameter(torch.zeros(size=(in_features, out_features)))
         nn.init.xavier_normal_(self.W.data, gain=1.414)
                 
         self.a = nn.Parameter(torch.zeros(size=(1, 2*out_features)))
         nn.init.xavier_normal_(self.a.data, gain=1.414)
 
-        self.dropout = nn.Dropout(dropout)
+        if self.skip_connection:
+            self.skip_projection = nn.Parameter(torch.empty(size=(in_features, out_features)))
+            nn.init.xavier_uniform_(self.skip_projection.data, gain=1.414)
+
+        self.dropout = dropout
         self.leakyrelu = nn.LeakyReLU(self.alpha)
         self.special_spmm = SpecialSpmm()
 
@@ -109,12 +127,17 @@ class SpGraphAttentionLayer(nn.Module):
         N = input.size()[0]
         edge = adj.nonzero().t()
 
-        h = torch.mm(input, self.W)
+        # Add dropout to the inputs
+        h = F.dropout(input, self.dropout, training=self.training)
+        # Apply linear projection
+        Wh = torch.mm(h, self.W)
+        # In the official repo, they add dropout after the linear projection
+        Wh = F.dropout(Wh, self.dropout, training=self.training)
         # h: N x out
-        assert not torch.isnan(h).any()
+        assert not torch.isnan(Wh).any()
 
         # Self-attention on the nodes - Shared attention mechanism
-        edge_h = torch.cat((h[edge[0, :], :], h[edge[1, :], :]), dim=1).t()
+        edge_h = torch.cat((Wh[edge[0, :], :], Wh[edge[1, :], :]), dim=1).t()
         # edge: 2*D x E
 
         edge_e = torch.exp(-self.leakyrelu(self.a.mm(edge_h).squeeze()))
@@ -124,10 +147,10 @@ class SpGraphAttentionLayer(nn.Module):
         e_rowsum = self.special_spmm(edge, edge_e, torch.Size([N, N]), torch.ones(size=(N,1), device=dv))
         # e_rowsum: N x 1
 
-        edge_e = self.dropout(edge_e)
+        edge_e = F.dropout(edge_e, self.dropout, training=self.training)
         # edge_e: E
 
-        h_prime = self.special_spmm(edge, edge_e, torch.Size([N, N]), h)
+        h_prime = self.special_spmm(edge, edge_e, torch.Size([N, N]), Wh)
         assert not torch.isnan(h_prime).any()
         # h_prime: N x out
         
@@ -135,11 +158,71 @@ class SpGraphAttentionLayer(nn.Module):
         # h_prime: N x out
         assert not torch.isnan(h_prime).any()
 
+        # Add skip connection
+        if self.skip_connection:
+            h_prime += torch.mm(h, self.skip_projection)
+
         if self.concat:
             # if this layer is not last layer,
             return F.elu(h_prime)
         else:
             # if this layer is last layer,
+            return h_prime
+
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
+
+
+class GraphAttentionLayerV2(nn.Module):
+    """
+    Simple GAT layer, similar to https://arxiv.org/abs/1710.10903
+    """
+    def __init__(self, in_features, out_features, dropout, alpha, concat=True, skip_connection=False):
+        super(GraphAttentionLayerV2, self).__init__()
+        self.dropout = dropout
+        self.in_features = in_features
+        self.out_features = out_features
+        self.alpha = alpha
+        self.concat = concat
+        self.skip_connection = skip_connection
+
+        self.W = nn.Parameter(torch.empty(size=(2*in_features, out_features)))
+        nn.init.xavier_uniform_(self.W.data, gain=1.414)
+        self.a = nn.Parameter(torch.empty(size=(out_features, 1)))
+        nn.init.xavier_uniform_(self.a.data, gain=1.414)
+
+        if self.skip_connection:
+            self.skip_projection = nn.Parameter(torch.empty(size=(in_features, out_features)))
+            nn.init.xavier_uniform_(self.skip_projection.data, gain=1.414)
+
+        self.leakyrelu = nn.LeakyReLU(self.alpha)
+
+    def forward(self, h, adj):
+        # Apply dropout to inputs
+        h = F.dropout(h, self.dropout, training=self.training)
+        # Project features
+        Wh1 = torch.matmul(h,self.W[:self.in_features, :]) #[N, F] @ [F , F'] --> [N, F']
+        Wh2 = torch.matmul(h,self.W[self.in_features:, :])
+        # Apply dropout to linear projections
+        Wh1 = F.dropout(Wh1, self.dropout, training=self.training)
+        Wh2 = F.dropout(Wh2 , self.dropout, training=self.training)
+        e = Wh1 + Wh2 
+        e = self.leakyrelu(e)
+        e = torch.matmul(e, self.a)                         #[N=2708, F'=64] @ [F',1] --> [N, 1]
+
+        zero_vec = -9e15*torch.ones_like(e)
+        attention = torch.where(adj > 0, e, zero_vec)
+        attention = F.softmax(attention, dim=1)
+        attention = F.dropout(attention, self.dropout, training=self.training)
+        h_prime = torch.matmul(attention, Wh2)
+
+        # Add skip connection
+        if self.skip_connection:
+            h_prime += torch.mm(h, self.skip_projection)
+
+        if self.concat:
+            return F.elu(h_prime)
+        else:
             return h_prime
 
     def __repr__(self):

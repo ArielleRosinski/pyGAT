@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.sparse as sp
 import torch
+from scipy.sparse import load_npz
 
 
 def encode_onehot(labels):
@@ -16,16 +17,33 @@ def load_data(path="./data/cora/", dataset="cora"):
     """Load citation network dataset (cora only for now)"""
     print('Loading {} dataset...'.format(dataset))
 
-    idx_features_labels = np.genfromtxt("{}{}.content".format(path, dataset), dtype=np.dtype(str))
-    features = sp.csr_matrix(idx_features_labels[:, 1:-1], dtype=np.float32)
-    labels = encode_onehot(idx_features_labels[:, -1])
+    if dataset == "cora": 
+        idx_features_labels = np.genfromtxt("{}{}.content".format(path, dataset), dtype=np.dtype(str))
+        features = sp.csr_matrix(idx_features_labels[:, 1:-1], dtype=np.float32)
+        labels = encode_onehot(idx_features_labels[:, -1])
 
-    # build graph
-    idx = np.array(idx_features_labels[:, 0], dtype=np.int32)
-    idx_map = {j: i for i, j in enumerate(idx)}
-    edges_unordered = np.genfromtxt("{}{}.cites".format(path, dataset), dtype=np.int32)
-    edges = np.array(list(map(idx_map.get, edges_unordered.flatten())), dtype=np.int32).reshape(edges_unordered.shape)
-    adj = sp.coo_matrix((np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])), shape=(labels.shape[0], labels.shape[0]), dtype=np.float32)
+        idx = np.array(idx_features_labels[:, 0], dtype=np.int32)
+        idx_map = {j: i for i, j in enumerate(idx)}
+        edges_unordered = np.genfromtxt("{}{}.cites".format(path, dataset), dtype=np.int32)
+        edges = np.array(list(map(idx_map.get, edges_unordered.flatten())), dtype=np.int32).reshape(edges_unordered.shape)
+        adj = sp.coo_matrix((np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])), shape=(labels.shape[0], labels.shape[0]), dtype=np.float32)
+
+        idx_train = range(140)
+        idx_val = range(200, 500)
+        idx_test = range(500, 1500)
+    
+    elif dataset == "pubmed" or dataset == "citeseer":
+        dgl_folder = "pubmed_dgl" if dataset == "pubmed" else "citeseer_dgl"
+
+        features = torch.load(f'{dgl_folder}/features.pt')
+        labels = torch.load(f'{dgl_folder}/labels.pt')
+
+        idx_train = torch.load(f'{dgl_folder}/idx_train.pt')
+        idx_val = torch.load(f'{dgl_folder}/idx_val.pt')
+        idx_test = torch.load(f'{dgl_folder}/idx_test.pt')
+        
+        adj = load_npz(f'{dgl_folder}/adj_sparse.npz')
+
 
     # build symmetric adjacency matrix
     adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
@@ -33,17 +51,21 @@ def load_data(path="./data/cora/", dataset="cora"):
     features = normalize_features(features)
     adj = normalize_adj(adj + sp.eye(adj.shape[0]))
 
-    idx_train = range(140)
-    idx_val = range(200, 500)
-    idx_test = range(500, 1500)
 
     adj = torch.FloatTensor(np.array(adj.todense()))
-    features = torch.FloatTensor(np.array(features.todense()))
-    labels = torch.LongTensor(np.where(labels)[1])
+   
 
-    idx_train = torch.LongTensor(idx_train)
-    idx_val = torch.LongTensor(idx_val)
-    idx_test = torch.LongTensor(idx_test)
+    if dataset == "cora":
+        idx_train = torch.LongTensor(idx_train)
+        idx_val = torch.LongTensor(idx_val)
+        idx_test = torch.LongTensor(idx_test)
+        
+        features = torch.FloatTensor(np.array(features.todense()))
+        labels = torch.LongTensor(np.where(labels)[1])
+    
+    elif dataset == "pubmed" or dataset == "citeseer":
+        features = torch.FloatTensor(np.array(features))
+    print("all good")
 
     return adj, features, labels, idx_train, idx_val, idx_test
 
@@ -69,7 +91,7 @@ def normalize_features(mx):
 
 def accuracy(output, labels):
     preds = output.max(1)[1].type_as(labels)
-    correct = preds.eq(labels).double()
+    correct = preds.eq(labels)
     correct = correct.sum()
     return correct / len(labels)
 
