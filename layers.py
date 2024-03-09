@@ -255,11 +255,11 @@ class GraphAttentionLayerV2(nn.Module):
         #Wh2t = Wh2.T             #8*2708 or 7*2708
         Wh2t = Wh2.unsqueeze(0) #1*2708*8
 
-        e = Wh1t + Wh2t  # 2708*8*2708 or 2708*7*2708
+        e = Wh1t + Wh2t  # 2708*2708*8 or 2708*2708*7
         #print(e.size())
-        e = self.leakyrelu(e) # 2708*8*2708 or 2708*7*2708
+        e = self.leakyrelu(e) # 2708*2708*8 or 2708*2708*7
         #e = torch.einsum('ijk,kb->ij', e, self.a)
-        e = torch.matmul(e,self.a)
+        e = torch.matmul(e,self.a) #2708*2708*1
         e = torch.squeeze(e)
         #print(e.size())
 
