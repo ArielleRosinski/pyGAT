@@ -14,7 +14,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 
 from utils import load_data, accuracy
-from layers import GraphAttentionLayer, GraphAttentionLayerV2, SpGraphAttentionLayer
+from layers import GraphAttentionLayer, GraphAttentionLayerV2, SpGraphAttentionLayer, SpGraphAttentionLayerV2
 from models import GAT
 
 # Cora specific constants
@@ -32,9 +32,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--no-cuda', action='store_true', default=False, help='Disables CUDA training.')
 parser.add_argument('--fastmode', action='store_true', default=False, help='Validate during training pass.')
 #parser.add_argument('--sparse', action='store_true', default=False, help='GAT with sparse version or not.')
-parser.add_argument('--dataset', type=str, default='pubmed', choices=['cora', 'pubmed', 'citeseer'], help='Dataset to use')
-parser.add_argument('--model', type=str, default='GATsparse', choices=['GATsparse', 'GAT', 'GATv2'], help='GAT model version.')
-parser.add_argument('--seed', type=int, default=50, help='Random seed.')
+parser.add_argument('--dataset', type=str, default='cora', choices=['cora', 'pubmed', 'citeseer'], help='Dataset to use')
+parser.add_argument('--model', type=str, default='GATv2', choices=['GATsparse', 'GAT', 'GATv2', 'GATv2sparse'], help='GAT model version.')
+parser.add_argument('--seed', type=int, default=60, help='Random seed.')
 parser.add_argument('--epochs', type=int, default=10000, help='Number of epochs to train.')  #10000
 #parser.add_argument('--lr', type=float, default=0.005, help='Initial learning rate.')
 #parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay (L2 loss on parameters).') #5e-4
@@ -114,16 +114,17 @@ layer_type = {
     'GATsparse': SpGraphAttentionLayer,
     'GAT': GraphAttentionLayer,
     'GATv2': GraphAttentionLayerV2,
+    'GATv2sparse': SpGraphAttentionLayerV2,
 }[args.model]
 # Create model
-model = GAT(nfeat=gat_config["nfeats"],
+model = GAT(nfeat=gat_config["nfeats"], 
             nheads=gat_config["nheads"],
             nlayers=gat_config["nlayers"],
             dropout=gat_config["dropout"],
             alpha=gat_config["alpha"],
             layer_type=layer_type,
             skip_connection=gat_config["skip_connection"])
-#print(model.atten)
+ 
 optimizer = optim.Adam(model.parameters(), 
                        lr=train_config["lr"], 
                        weight_decay=train_config["weight_decay"])
@@ -133,11 +134,11 @@ features, adj, labels = Variable(features), Variable(adj), Variable(labels)
 # Select a backend
 if args.cuda:
     device = torch.device("cuda")
-elif not args.no_cuda and torch.backends.mps.is_available() and args.model != 'GATsparse':
+elif not args.no_cuda and torch.backends.mps.is_available() and args.model not in ['GATsparse','GATv2sparse']:
     device = torch.device("mps")
 else:
     device = torch.device("cpu")
-
+print(device)
 # Move tensor to appropiate device
 model = model.to(device)
 features = features.to(device)
@@ -194,6 +195,7 @@ loss_values = []
 bad_counter = 0
 best = args.epochs + 1
 best_epoch = 0
+
 for epoch in range(args.epochs):
     loss_values.append(train(epoch))
     ''''
@@ -211,20 +213,57 @@ for epoch in range(args.epochs):
     if bad_counter == args.patience:
         break
 
+    files = glob.glob('*.pkl')
+    for file in files:
+        epoch_nb = int(file.split('_')[0])
+        if epoch_nb < best_epoch and str(args.dataset) == str(file.split('_')[1]) and f'{args.model}.pkl' == str(
+                file.split('_')[2]):
+            os.remove(file)
+
+files = glob.glob('*.pkl')
+for file in files:
+    epoch_nb = int(file.split('_')[0])
+    if epoch_nb > best_epoch and str(args.dataset) == str(file.split('_')[1]) and f'{args.model}.pkl' == str(
+            file.split('_')[2]):
+        os.remove(file)
+
+print("Optimization Finished!")
+print("Total time elapsed: {:.4f}s".format(time.time() - t_total))
+
+# Restore best model
+print('Loading {}th epoch'.format(best_epoch))
+model.load_state_dict(torch.load('{}_{}_{}.pkl'.format(best_epoch, args.dataset, args.model)))
+
+# Testing
+compute_test()
+
+''''
+for epoch in range(args.epochs):
+    loss_values.append(train(epoch))
+
+    torch.save(model.state_dict(), '{}_{}.pkl'.format(epoch, args.dataset))
+    if loss_values[-1] < best:
+        best = loss_values[-1]
+        best_epoch = epoch
+        bad_counter = 0
+    else:
+        bad_counter += 1
+
+    if bad_counter == args.patience:
+        break
+
 
     files = glob.glob('*.pkl')
     for file in files:
         epoch_nb = int(file.split('_')[0])
-        #data_set = file.split('_')[1]
-        #print(f'{args.model}.pkl' == str(file.split('_')[2]))
-        if epoch_nb < best_epoch and str(args.dataset) == str(file.split('_')[1]) and f'{args.model}.pkl' == str(file.split('_')[2]):
+        if epoch_nb < best_epoch:
             os.remove(file)
 
                 
 files = glob.glob('*.pkl')
 for file in files:
     epoch_nb = int(file.split('_')[0])
-    if epoch_nb > best_epoch and str(args.dataset) == str(file.split('_')[1]) and f'{args.model}.pkl' == str(file.split('_')[2]):
+    if epoch_nb > best_epoch:
         os.remove(file)
 
 
@@ -234,7 +273,8 @@ print("Total time elapsed: {:.4f}s".format(time.time() - t_total))
 
 # Restore best model
 print('Loading {}th epoch'.format(best_epoch))
-model.load_state_dict(torch.load('{}_{}_{}.pkl'.format(best_epoch, args.dataset,args.model)))
+model.load_state_dict(torch.load('{}_{}.pkl'.format(best_epoch, args.dataset))) 
 
 # Testing
 compute_test()
+'''

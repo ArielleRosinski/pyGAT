@@ -15,7 +15,7 @@ from torch.autograd import Variable
 
 from load_data_ppi import load_data_ppi
 from models import GAT
-from layers import GraphAttentionLayer, GraphAttentionLayerV2, SpGraphAttentionLayer
+from layers import GraphAttentionLayer, GraphAttentionLayerV2, SpGraphAttentionLayer, SpGraphAttentionLayerV2
 from sklearn.metrics import f1_score
 
 # PPI specific constants
@@ -28,8 +28,8 @@ parser.add_argument('--no-cuda', action='store_true', default=False, help='Disab
 parser.add_argument('--fastmode', action='store_true', default=False, help='Validate during training pass.')
 #parser.add_argument('--sparse', action='store_true', default=False, help='GAT with sparse version or not.')
 parser.add_argument('--dataset', type=str, default='ppi', choices=['ppi'], help='Dataset to use')
-parser.add_argument('--model', type=str, default='GAT', choices=['GAT_sparse', 'GAT', 'GATv2'], help='GAT model version.')
-parser.add_argument('--seed', type=int, default=60, help='Random seed.')
+parser.add_argument('--model', type=str, default='GATv2sparse', choices=['GATsparse', 'GAT', 'GATv2', 'GATv2sparse'], help='GAT model version.')
+parser.add_argument('--seed', type=int, default=72, help='Random seed.')
 parser.add_argument('--epochs', type=int, default=10000, help='Number of epochs to train.')
 #parser.add_argument('--lr', type=float, default=0.005, help='Initial learning rate.')
 #parser.add_argument('--weight_decay', type=float, default=0.0, help='Weight decay (L2 loss on parameters).')
@@ -57,7 +57,7 @@ else:
     raise ValueError("Dataset not known")
 
 args.cuda = not args.no_cuda and torch.cuda.is_available()
-#print(torch.cuda.is_available())
+
 random.seed(args.seed)
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
@@ -71,19 +71,20 @@ if args.cuda:
 # Select a backend
 if args.cuda:
     device = torch.device("cuda")
-elif not args.no_cuda and torch.backends.mps.is_available() and args.model != 'GAT_sparse':
+elif not args.no_cuda and torch.backends.mps.is_available() and args.model not in ['GATsparse','GATv2sparse']:
     device = torch.device("mps")
 else:
     device = torch.device("cpu")
-#print(device)
+
 # Load data 
 data_loader_train, data_loader_val, data_loader_test = load_data_ppi(args.batch_size, device)
 
 # Select the appropiate layer type
 layer_type = {
-    'GAT_sparse': SpGraphAttentionLayer,
+    'GATsparse': SpGraphAttentionLayer,
     'GAT': GraphAttentionLayer,
     'GATv2': GraphAttentionLayerV2,
+    'GATv2sparse': SpGraphAttentionLayerV2,
 }[args.model]
 
 # Create model
@@ -178,6 +179,7 @@ loss_values = []
 bad_counter = 0
 best = args.epochs + 1
 best_epoch = 0
+
 for epoch in range(args.epochs):
     loss_values.append(train(epoch))
 
@@ -212,3 +214,40 @@ print('Loading {}th epoch'.format(best_epoch))
 model.load_state_dict(torch.load('{}_{}_{}.pkl'.format(best_epoch, args.dataset,args.model)))
 # Testing
 compute_test()
+''''
+for epoch in range(args.epochs):
+    loss_values.append(train(epoch))
+
+    torch.save(model.state_dict(), '{}_{}.pkl'.format(epoch, args.dataset))
+    if loss_values[-1] < best:
+        best = loss_values[-1]
+        best_epoch = epoch
+        bad_counter = 0
+    else:
+        bad_counter += 1
+
+    if bad_counter == args.patience:
+        break
+
+    files = glob.glob('*.pkl')
+    for file in files:
+        epoch_nb = int(file.split('.')[0])
+        if epoch_nb < best_epoch:
+            os.remove(file)
+
+files = glob.glob('*.pkl')
+for file in files:
+    epoch_nb = int(file.split('.')[0])
+    if epoch_nb > best_epoch:
+        os.remove(file)
+
+print("Optimization Finished!")
+print("Total time elapsed: {:.4f}s".format(time.time() - t_total))
+
+# Restore best model
+print('Loading {}th epoch'.format(best_epoch))
+model.load_state_dict(torch.load('{}.pkl'.format(best_epoch)))
+
+# Testing
+compute_test()
+'''
