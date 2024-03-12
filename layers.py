@@ -182,9 +182,13 @@ class SpGraphAttentionLayer(nn.Module):
             h_prime += torch.mm(h, self.skip_projection)
 
         if self.concat:
+            if not self.training:
+                save_intermediate_representation(self.name, F.elu(h_prime))
             # if this layer is not last layer,
             return F.elu(h_prime)
         else:
+            if not self.training:
+                save_intermediate_representation(self.name, h_prime)
             # if this layer is last layer,
             return h_prime
 

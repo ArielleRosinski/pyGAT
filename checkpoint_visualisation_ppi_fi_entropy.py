@@ -128,7 +128,7 @@ model.load_state_dict(torch.load(checkpoint, map_location=device))
 
 visualisation_path = "./visualisations"
 if not os.path.exists(visualisation_path):
-    os.makdirs(visualisation_path)
+    os.makedirs(visualisation_path)
 
 visualisation_path += f"/{args.dataset}"
 if not os.path.exists(visualisation_path):
