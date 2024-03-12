@@ -180,7 +180,7 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
         features.grad = None
     
     # Compute entropies grad norms
-    entropies_grad_norm = np.array([entropy(normalised_grad_norm) for normalised_grad_norm in normalised_grad_norms_list])
+    entropies_grad_norm = np.array([entropy(normalised_grad_norm.cpu().detach().numpy()) for normalised_grad_norm in normalised_grad_norms_list])
     uniform_entropies =  np.array([np.log(len(normalised_grad_norm)) for normalised_grad_norm in normalised_grad_norms_list])
     # Diagram for uniform entropies
     plt.figure(figsize=(10, 8))
