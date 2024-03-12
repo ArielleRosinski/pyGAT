@@ -129,7 +129,7 @@ model.load_state_dict(torch.load(checkpoint, map_location=device))
 
 visualisation_path = "./visualisations"
 if not os.path.exists(visualisation_path):
-    os.makdirs(visualisation_path)
+    os.makedirs(visualisation_path)
 
 visualisation_path += f"/{args.dataset}"
 if not os.path.exists(visualisation_path):
@@ -233,7 +233,7 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
         plt.legend(loc='upper right')
 
         # Display the plot
-        plt.savefig(f"{visualisation_path}/{module_name}_{batch_idx}_entropy_histogram_graph.png", dpi=300)
+        plt.savefig(f"{visualisation_path}/{module_name}_graph_{batch_idx}_entropy_histogram.png", dpi=300)
         plt.close()
 
         # Create the heatmap
@@ -249,6 +249,6 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
 
         # Display the plot
         # Display the plot
-        plt.savefig(f"{visualisation_path}/{module_name}_{batch_idx}_vs_uniform_histogram_graph.png", dpi=300)
+        plt.savefig(f"{visualisation_path}/{module_name}_graph_{batch_idx}_vs_uniform_histogram.png", dpi=300)
         plt.close()
 

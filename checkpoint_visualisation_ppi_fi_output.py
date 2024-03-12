@@ -21,6 +21,7 @@ import networkx as nx
 from torch_scatter import scatter_sum
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
+from scipy.stats import kendalltau
 
 
 from load_data_ppi import load_data_ppi
@@ -132,9 +133,13 @@ model.load_state_dict(torch.load(checkpoint, map_location=torch.device('cpu')))
 
 visualisation_path = "./visualisations"
 if not os.path.exists(visualisation_path):
-    os.makdirs(visualisation_path)
+    os.makedirs(visualisation_path)
 
 visualisation_path += f"/{args.dataset}"
+if not os.path.exists(visualisation_path):
+    os.makedirs(visualisation_path)
+
+visualisation_path += f"/{args.model}"
 if not os.path.exists(visualisation_path):
     os.makedirs(visualisation_path)
 
@@ -146,9 +151,9 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
     edge = adj.nonzero().t()
     features.requires_grad_()
     unnormalized_output = model(features, adj)
-    # shape 
+    # Get class
     temperature = 0.5
-    soft_classes = torch.matmul(torch.softmax(unnormalized_output/temperature, dim=1), torch.arange(0, 121, dtype=torch.float))
+    soft_classes = torch.matmul(torch.softmax(unnormalized_output/temperature, dim=1), torch.arange(0, 121, dtype=torch.float, device=device))
 
     normalised_grad_norms_list = []
     for i in tqdm(range(N)):
@@ -159,32 +164,61 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
         # Extract neighbours
         neighbours_idxs = edge[1, mask]
         # unnormalised_grad_norms = torch.abs(torch.rand(len(neighbours_idxs)))
-        # normalised_grad_norms = unnormalised_grad_norms / unnormalised_grad_norms.sum()
-        # normalised_grad_norms_list.append(normalised_grad_norms)
+        # normalised_grad_norms = unnormalised_grad_norms / unnormalised_grad_norms.sum()
+        # normalised_grad_norms_list.append(normalised_grad_norms)
         # Retrieve features gradients
         soft_class_i.backward(retain_graph=True)
         # Obtain gradients for the neighbours
         grads_features = features.grad.data[neighbours_idxs, :]
         unnormalised_grad_norms = torch.norm(grads_features, p=2, dim=1)
         normalised_grad_norms = unnormalised_grad_norms / torch.sum(unnormalised_grad_norms)
-        breakpoint()
+
         assert abs(normalised_grad_norms.sum().item() - 1.0) < 1e-2
         # Save normalised grad norms
         normalised_grad_norms_list.append(normalised_grad_norms)
         # Reset gradients
         features.grad = None
-
-    normalised_grad_norms_list = torch.cat(normalised_grad_norms_list, dim=0).view(-1, 1)
     
-    normalised_attention_dict = {}
+    # Compute entropies grad norms
+    entropies_grad_norm = np.array([entropy(normalised_grad_norm) for normalised_grad_norm in normalised_grad_norms_list])
+    uniform_entropies =  np.array([np.log(len(normalised_grad_norm)) for normalised_grad_norm in normalised_grad_norms_list])
+    # Diagram for uniform entropies
+    plt.figure(figsize=(10, 8))
+    plt.hist(uniform_entropies, color='orange', alpha=0.5, label='Uniform Entropy', bins=10)
+    plt.hist(entropies_grad_norm, color='blue', alpha=0.5, label='FI Entropy', bins=10)
+
+    # Adding labels and title
+    plt.xlabel('Entropy Bin')
+    plt.ylabel('# of nodes')
+    plt.title('Feature Importance Entropy Histogram')
+    plt.legend(loc='upper right')
+
+    # Display the plot
+    plt.savefig(f"{visualisation_path}/graph_{batch_idx}_fi_entropy_vs_uniform_histogram.png", dpi=300)
+    plt.close()
+
+    # Diagram for uniform entropies
+    plt.figure(figsize=(10, 8))
+    plt.hist(entropies_grad_norm, color='blue', alpha=0.5, label='FI Entropy', bins=10)
+
+    # Adding labels and title
+    plt.xlabel('Entropy bins')
+    plt.ylabel('# of nodes')
+    plt.title('Feature Importance Entropy Histogram')
+    plt.legend(loc='upper right')
+
+    # Display the plot
+    plt.savefig(f"{visualisation_path}/graph_{batch_idx}_fi_entropy_histogram.png", dpi=300)
+    plt.close()
+    
     # Get attentions for last head to get correlations
     for layer_name, edge_e in layers.attention_weights.items():
+        # Save attentions in list
+        normalised_attention_list = []
 
         e_rowsum = scatter_sum(edge_e, edge[0, :])
         # Sparse attention
         attention = edge_e / e_rowsum[edge[0, :]]
-
-        normalised_attention_dict[layer_name] = []
         
         # Iterate over each index in the range of N
         for i in tqdm(range(N)):
@@ -192,45 +226,43 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
             mask = edge[0, :] == i
             assert abs(attention[mask].sum().item() - 1.0) < 1e-2
             # Select the elements from E where the mask is True and convert to a list
-            normalised_attention_dict[layer_name].append(attention[mask])
+            normalised_attention_list.append(attention[mask])
 
-        current_layer = 'attention_layer_3_head_6'
-        normalised_attention_list = normalised_attention_dict['attention_layer_3_head_6']
+        # Compute kendall tau correlations
+        kendall_tau = np.array([kendalltau(normalised_grad_norm_tensor.cpu().detach().numpy(), normalised_attention_tensor.cpu().detach().numpy(), nan_policy='omit').statistic for normalised_grad_norm_tensor, normalised_attention_tensor in zip(normalised_grad_norms_list, normalised_attention_list)])
+        # Entropies
+        entropies_attention = np.array([entropy(attention_tensor.cpu().detach().numpy()) for attention_tensor in normalised_attention_list])
 
-        data_x = torch.cat(normalised_attention_list, dim=0).view(-1, 1)
-        data_y = torch.cat(normalised_grad_norms_list, dim=0).view(-1, 1)
-        data = torch.hstack((data_x, data_y)).detach().numpy()
-
-        np.savez('correlations_grads.npz', data)
-        # data = np.array([[normalised_attention_list.tolist(), normalised_grad_tensor.tolist()] for normalised_grad_tensor, normalised_attention_tensor in zip(normalised_grad_norms_list[:1000], normalised_attention_list[:1000])])
-        # Scatter plot
-        # Splitting the data into x and y components for regression
-        x = data[:, 0].reshape(-1, 1)  # Feature matrix (needs to be 2D for sklearn)
-        
-        y = data[:, 1]  # Target variable
-
-        # Perform linear regression
-        model = LinearRegression().fit(x, y)
-
-        # Predict y values
-        y_pred = model.predict(x)
-
-        # Calculate R^2 coefficient
-        r2 = r2_score(y, y_pred)
-
-        # Plotting the scatter plot
-        plt.scatter(x, y, color='blue', s=8, label='Data points')
-
-        # Plotting the regression line
-        plt.plot(x, y_pred, color='green', linewidth=1, label=f'Regression line\n$R^2={r2:.2f}$')
+        # Create the heatmap
+        plt.figure(figsize=(10, 8))
+        plt.hist(uniform_entropies, color='orange', alpha=0.5, label='Uniform Entropy', bins=10)
+        plt.hist(entropies_grad_norm, color='blue', alpha=0.5, label='FI Entropy', bins=10)
+        plt.hist(entropies_attention, color='green', alpha=0.5, label='Attention Entropy', bins=10)
 
         # Adding labels and title
-        plt.xlabel('Attention Coefficients')
-        plt.ylabel('Normalised Gradients')
-        plt.title('Scatter Plot Attention Coefficients vs Normalised Gradients with $R^2$')
-        plt.legend()
+        plt.xlabel('Entropy bins')
+        plt.ylabel('# of nodes')
+        plt.title(layer_name)
+        plt.legend(loc='upper right')
 
-        plt.show()
+        # Display the plot
+        # Display the plot
+        plt.savefig(f"{visualisation_path}/{layer_name}_graph_{batch_idx}_entropies_fi_vs_attention.png", dpi=300)
+        plt.close()
 
+        # Create the heatmap
+        plt.figure(figsize=(10, 8))
+        plt.hist(kendall_tau, alpha=0.5, label='Kendall Tau Correlation', bins=10)
+
+        # Adding labels and title
+        plt.xlabel('Kendall Tau Correlation bins')
+        plt.ylabel('# of nodes')
+        plt.title(layer_name)
+        plt.legend(loc='upper right')
+
+        # Display the plot
+        # Display the plot
+        plt.savefig(f"{visualisation_path}/{layer_name}_graph_{batch_idx}_kendall_tau.png", dpi=300)
+        plt.close()
 
 
