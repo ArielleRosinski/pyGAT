@@ -16,6 +16,7 @@ class GAT(nn.Module):
             self.gat_layers.append([])
             for j in range(nheads[i+1]): 
                 layer = layer_type(
+                    name='attention_layer_{}_head_{}'.format(i+1,j+1),
                     in_features=nfeat[i] * nheads[i], 
                     out_features=nfeat[i+1], 
                     dropout=dropout, 

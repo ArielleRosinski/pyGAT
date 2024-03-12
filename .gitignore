@@ -6,6 +6,10 @@ __pycache__/
 # Checkpoints
 *.pkl
 
+# Visualisations
+visualisations/
+
+
 # C extensions
 *.so
 

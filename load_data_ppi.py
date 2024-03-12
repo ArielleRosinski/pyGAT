@@ -114,7 +114,7 @@ def load_data_ppi(batch_size, device):
     num_graphs_per_split_cumulative = [0]
 
     # Small optimization "trick" since we only need test in the playground.py
-    splits = ['train', 'valid', 'test']
+    splits = ['test']
 
     for split in splits:
         # PPI has 50 features per node, it's a combination of positional gene sets, motif gene sets,
@@ -164,6 +164,16 @@ def load_data_ppi(batch_size, device):
     #
     # Prepare graph data loaders
     #
+            
+    data_loader_test = GraphDataLoader(
+        node_features_list[num_graphs_per_split_cumulative[0]:num_graphs_per_split_cumulative[1]],
+        node_labels_list[num_graphs_per_split_cumulative[0]:num_graphs_per_split_cumulative[1]],
+        adjacency_matrix_list[num_graphs_per_split_cumulative[0]:num_graphs_per_split_cumulative[1]],
+        batch_size=batch_size,
+        shuffle=False
+    )
+
+    return None, None, data_loader_test
 
     data_loader_train = GraphDataLoader(
         node_features_list[num_graphs_per_split_cumulative[0]:num_graphs_per_split_cumulative[1]],

@@ -4,6 +4,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_scatter import scatter_max
 
+global attention_weights
+attention_weights = {}
+global intermediate_representation
+intermediate_representation = {}
+
+def save_attention_weights(id, current_attention_weights):
+    global attention_weights
+    attention_weights[id] = current_attention_weights
+
+def save_intermediate_representation(id, intermediate_representation_weights):
+    global intermediate_representation
+    intermediate_representation[id] = intermediate_representation_weights
 
 class GraphAttentionLayer(nn.Module):
     """
@@ -100,13 +112,14 @@ class SpGraphAttentionLayer(nn.Module):
     Sparse version GAT layer, similar to https://arxiv.org/abs/1710.10903
     """
 
-    def __init__(self, in_features, out_features, dropout, alpha, concat=True, skip_connection=False):
+    def __init__(self, name, in_features, out_features, dropout, alpha, concat=True, skip_connection=False):
         super(SpGraphAttentionLayer, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.alpha = alpha
         self.concat = concat
         self.skip_connection = skip_connection
+        self.name = name
         
         self.W = nn.Parameter(torch.zeros(size=(in_features, out_features)))
         nn.init.xavier_normal_(self.W.data, gain=1.414)
@@ -146,6 +159,9 @@ class SpGraphAttentionLayer(nn.Module):
         edge_e = torch.exp(edge_e - edge_e_max[edge[0, :]])
         assert not torch.isnan(edge_e).any()
         # edge_e: E
+        # Comment if not debugging
+        if not self.training:
+            save_attention_weights(self.name, edge_e)
 
         e_rowsum = self.special_spmm(edge, edge_e, torch.Size([N, N]), torch.ones(size=(N,1), device=dv))
         # e_rowsum: N x 1
@@ -180,8 +196,9 @@ class GraphAttentionLayerV2(nn.Module):
     """
     Simple GAT layer, similar to https://arxiv.org/abs/1710.10903
     """
-    def __init__(self, in_features, out_features, dropout, alpha, concat=True, skip_connection=False):
+    def __init__(self, name, in_features, out_features, dropout, alpha, concat=True, skip_connection=False):
         super(GraphAttentionLayerV2, self).__init__()
+        self.name = name
         self.dropout = dropout
         self.in_features = in_features
         self.out_features = out_features
@@ -209,15 +226,15 @@ class GraphAttentionLayerV2(nn.Module):
         # Apply dropout to linear projections
         Wh1 = F.dropout(Wh1, self.dropout, training=self.training)
         Wh2 = F.dropout(Wh2 , self.dropout, training=self.training)
-        e = Wh1 + Wh2 
+        e = Wh1.unsqueeze(-1) + Wh2.T.unsqueeze(0)
         e = self.leakyrelu(e)
-        e = torch.matmul(e, self.a)                         #[N=2708, F'=64] @ [F',1] --> [N, 1]
+        e = torch.einsum('ijk,j->ik', e, self.a.squeeze()) #[N=2708, F'=64] @ [F',1] --> [N, 1]
 
         zero_vec = -9e15*torch.ones_like(e)
         attention = torch.where(adj > 0, e, zero_vec)
         attention = F.softmax(attention, dim=1)
         attention = F.dropout(attention, self.dropout, training=self.training)
-        h_prime = torch.matmul(attention, Wh2)
+        h_prime = torch.matmul(attention, Wh1)
 
         # Add skip connection
         if self.skip_connection:
@@ -236,8 +253,9 @@ class SpGraphAttentionLayerV2(nn.Module):
     Sparse version GAT layer, similar to https://arxiv.org/abs/1710.10903
     """
 
-    def __init__(self, in_features, out_features, dropout, alpha, concat=True, skip_connection=False):
+    def __init__(self, name, in_features, out_features, dropout, alpha, concat=True, skip_connection=False):
         super(SpGraphAttentionLayerV2, self).__init__()
+        self.name = name
         self.in_features = in_features
         self.out_features = out_features
         self.alpha = alpha
@@ -286,6 +304,9 @@ class SpGraphAttentionLayerV2(nn.Module):
         edge_e = torch.exp(edge_e - edge_e_max[edge[0, :]])
         assert not torch.isnan(edge_e).any()
         # edge_e: E
+        # Comment if not debugging
+        if not self.training:
+            save_attention_weights(self.name, edge_e)
 
         e_rowsum = self.special_spmm(edge, edge_e, torch.Size([N, N]), torch.ones(size=(N,1), device=dv))
         # e_rowsum: N x 1
@@ -306,9 +327,13 @@ class SpGraphAttentionLayerV2(nn.Module):
             h_prime += torch.mm(h, self.skip_projection)
 
         if self.concat:
+            if not self.training:
+                save_intermediate_representation(self.name, F.elu(h_prime))
             # if this layer is not last layer,
             return F.elu(h_prime)
         else:
+            if not self.training:
+                save_intermediate_representation(self.name, h_prime)
             # if this layer is last layer,
             return h_prime
 
