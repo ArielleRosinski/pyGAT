@@ -147,11 +147,12 @@ model.eval()
 
 for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
     # Iterate over nodes
-    N = adj.shape[0]
-    edge = adj.nonzero().t()
     features.requires_grad_()
     unnormalized_output = model(features, adj)
-
+    # Get class
+    temperature = 0.5
+    soft_classes = torch.matmul(torch.softmax(unnormalized_output/temperature, dim=1), torch.arange(0, 121, dtype=torch.float, device=device))
+    
     # Compute entropies grad norms
     entropies_grad_norm = np.load(f"{visualisation_path}/graph_{batch_idx}_entropies_grad_norm.npz")
     uniform_entropies =  np.load(f"{visualisation_path}/graph_{batch_idx}_uniform_entropies.npz")
@@ -183,13 +184,58 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
     # Display the plot
     plt.savefig(f"{visualisation_path}/graph_{batch_idx}_fi_entropy_histogram.png", dpi=300)
     plt.close()
+
+    layer_heads = []
+    for layer_name in layers.attention_weights.keys():
+        layer_num = int(layer_name.split("_")[2])
+        if len(layer_heads) < layer_num:
+            layer_heads.append([])
+        layer_heads[layer_num-1].append(layer_name)
+
+    for layer_number, layer_heads_names in enumerate(layer_heads):
+        # Compute kendall tau correlations
+        kendall_tau = np.load(f"{visualisation_path}/layer_{layer_number+1}_graph_{batch_idx}_kendall_tau.npz")
+        # Entropies
+        entropies_attention = np.load(f"{visualisation_path}/layer_{layer_number+1}_graph_{batch_idx}_entropies_attention.npz")
+
+        # Create the heatmap
+        plt.figure(figsize=(10, 8))
+        plt.hist(uniform_entropies, color='orange', alpha=0.5, label='Uniform Entropy', bins=10)
+        plt.hist(entropies_grad_norm, color='blue', alpha=0.5, label='FI Entropy', bins=10)
+        plt.hist(entropies_attention, color='green', alpha=0.5, label='Attention Entropy', bins=10)
+
+        # Adding labels and title
+        plt.xlabel('Entropy bins')
+        plt.ylabel('# of nodes')
+        plt.title(f"Layer {layer_number+1}")
+        plt.legend(loc='upper right')
+
+        # Display the plot
+        # Display the plot
+        plt.savefig(f"{visualisation_path}/layer_{layer_number+1}_graph_{batch_idx}_entropies_fi_vs_attention.png", dpi=300)
+        plt.close()
+
+        # Create the heatmap
+        plt.figure(figsize=(10, 8))
+        plt.hist(kendall_tau, alpha=0.5, label='Kendall Tau Correlation', bins=10)
+
+        # Adding labels and title
+        plt.xlabel('Kendall Tau Correlation bins')
+        plt.ylabel('# of nodes')
+        plt.title(f"Layer {layer_number+1}")
+        plt.legend(loc='upper right')
+
+        # Display the plot
+        # Display the plot
+        plt.savefig(f"{visualisation_path}/layer_{layer_number+1}_graph_{batch_idx}_kendall_tau.png", dpi=300)
+        plt.close()
     
     # Get attentions for last head to get correlations
     for layer_name, edge_e in layers.attention_weights.items():
         # Compute kendall tau correlations
-        kendall_tau =  np.load(f"{visualisation_path}/graph_{batch_idx}_kendall_tau.npz")
+        kendall_tau = np.load(f"{visualisation_path}/{layer_name}_graph_{batch_idx}_kendall_tau.npz")
         # Entropies
-        entropies_attention = np.load(f"{visualisation_path}/graph_{batch_idx}_entropies_attention.npz")
+        entropies_attention = np.load(f"{visualisation_path}/{layer_name}_graph_{batch_idx}_entropies_attention.npz")
 
         # Create the heatmap
         plt.figure(figsize=(10, 8))

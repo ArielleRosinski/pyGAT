@@ -163,19 +163,19 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
         mask = edge[0, :] == i
         # Extract neighbours
         neighbours_idxs = edge[1, mask]
-        # unnormalised_grad_norms = torch.abs(torch.rand(len(neighbours_idxs)))
-        # normalised_grad_norms = unnormalised_grad_norms / unnormalised_grad_norms.sum()
-        # normalised_grad_norms_list.append(normalised_grad_norms)
+        unnormalised_grad_norms = torch.abs(torch.rand(len(neighbours_idxs)))
+        normalised_grad_norms = unnormalised_grad_norms / unnormalised_grad_norms.sum()
+        normalised_grad_norms_list.append(normalised_grad_norms)
         # Retrieve features gradients
-        soft_class_i.backward(retain_graph=True)
+        #soft_class_i.backward(retain_graph=True)
         # Obtain gradients for the neighbours
-        grads_features = features.grad.data[neighbours_idxs, :]
-        unnormalised_grad_norms = torch.norm(grads_features, p=2, dim=1)
-        normalised_grad_norms = unnormalised_grad_norms / torch.sum(unnormalised_grad_norms)
+        #grads_features = features.grad.data[neighbours_idxs, :]
+        #unnormalised_grad_norms = torch.norm(grads_features, p=2, dim=1)
+        #normalised_grad_norms = unnormalised_grad_norms / torch.sum(unnormalised_grad_norms)
 
         assert abs(normalised_grad_norms.sum().item() - 1.0) < 1e-2
         # Save normalised grad norms
-        normalised_grad_norms_list.append(normalised_grad_norms)
+        #normalised_grad_norms_list.append(normalised_grad_norms)
         # Reset gradients
         features.grad = None
     
@@ -213,6 +213,76 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
     # Display the plot
     plt.savefig(f"{visualisation_path}/graph_{batch_idx}_fi_entropy_histogram.png", dpi=300)
     plt.close()
+
+    layer_heads = []
+    for layer_name in layers.attention_weights.keys():
+        layer_num = int(layer_name.split("_")[2])
+        if len(layer_heads) < layer_num:
+            layer_heads.append([])
+        layer_heads[layer_num-1].append(layer_name)
+
+    for layer_number, layer_heads_names in enumerate(layer_heads):
+        # Save attentions in list
+        normalised_attention_list = []
+        # Iterate over heads
+        for layer_head_name in layer_heads_names:
+            edge_e = layers.attention_weights[layer_head_name]
+            e_rowsum = scatter_sum(edge_e, edge[0, :])
+            # Sparse attention
+            attention = edge_e / e_rowsum[edge[0, :]]
+            
+            # Iterate over each index in the range of N
+            for i in tqdm(range(N)):
+                # Find the mask where indexes match the current index
+                mask = edge[0, :] == i
+                assert abs(attention[mask].sum().item() - 1.0) < 1e-2
+                # Select the elements from E where the mask is True and convert to a list
+                if len(normalised_attention_list) <= i:
+                    normalised_attention_list.append(attention[mask])
+                else:
+                    normalised_attention_list[i] = normalised_attention_list[i] + attention[mask]
+        # Take the mean
+        normalised_attention_list = [normalised_attention/float(len(layer_heads_names)) for normalised_attention in normalised_attention_list]
+
+        # Compute kendall tau correlations
+        kendall_tau = np.array([kendalltau(normalised_grad_norm_tensor.cpu().detach().numpy(), normalised_attention_tensor.cpu().detach().numpy(), nan_policy='omit').statistic for normalised_grad_norm_tensor, normalised_attention_tensor in zip(normalised_grad_norms_list, normalised_attention_list)])
+        # Save kendall tau
+        np.savez(f"{visualisation_path}/layer_{layer_number+1}_graph_{batch_idx}_kendall_tau.npz", kendall_tau)
+        # Entropies
+        entropies_attention = np.array([entropy(attention_tensor.cpu().detach().numpy()) for attention_tensor in normalised_attention_list])
+        np.savez(f"{visualisation_path}/layer_{layer_number+1}_graph_{batch_idx}_entropies_attention.npz", entropies_attention)
+
+        # Create the heatmap
+        plt.figure(figsize=(10, 8))
+        plt.hist(uniform_entropies, color='orange', alpha=0.5, label='Uniform Entropy', bins=10)
+        plt.hist(entropies_grad_norm, color='blue', alpha=0.5, label='FI Entropy', bins=10)
+        plt.hist(entropies_attention, color='green', alpha=0.5, label='Attention Entropy', bins=10)
+
+        # Adding labels and title
+        plt.xlabel('Entropy bins')
+        plt.ylabel('# of nodes')
+        plt.title(f"Layer {layer_number+1}")
+        plt.legend(loc='upper right')
+
+        # Display the plot
+        # Display the plot
+        plt.savefig(f"{visualisation_path}/layer_{layer_number+1}_graph_{batch_idx}_entropies_fi_vs_attention.png", dpi=300)
+        plt.close()
+
+        # Create the heatmap
+        plt.figure(figsize=(10, 8))
+        plt.hist(kendall_tau, alpha=0.5, label='Kendall Tau Correlation', bins=10)
+
+        # Adding labels and title
+        plt.xlabel('Kendall Tau Correlation bins')
+        plt.ylabel('# of nodes')
+        plt.title(f"Layer {layer_number+1}")
+        plt.legend(loc='upper right')
+
+        # Display the plot
+        # Display the plot
+        plt.savefig(f"{visualisation_path}/layer_{layer_number+1}_graph_{batch_idx}_kendall_tau.png", dpi=300)
+        plt.close()
     
     # Get attentions for last head to get correlations
     for layer_name, edge_e in layers.attention_weights.items():
@@ -236,8 +306,8 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
         # Entropies
         entropies_attention = np.array([entropy(attention_tensor.cpu().detach().numpy()) for attention_tensor in normalised_attention_list])
         # Save values for plotting
-        np.savez(f"{visualisation_path}/graph_{batch_idx}_kendall_tau.npz", kendall_tau)
-        np.savez(f"{visualisation_path}/graph_{batch_idx}_entropies_attention.npz", entropies_attention)
+        np.savez(f"{visualisation_path}/{layer_name}_graph_{batch_idx}_kendall_tau.npz", kendall_tau)
+        np.savez(f"{visualisation_path}/{layer_name}_graph_{batch_idx}_entropies_attention.npz", entropies_attention)
 
         # Create the heatmap
         plt.figure(figsize=(10, 8))
