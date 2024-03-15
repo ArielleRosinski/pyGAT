@@ -160,7 +160,7 @@ with open(f'{visualisation_path}/entropy_results.txt', 'w+') as f:
                 unnormalised_grad_norms = torch.norm(grads_features, p=2, dim=1)
                 normalised_grad_norms = unnormalised_grad_norms / torch.sum(unnormalised_grad_norms)
                 # Compute entropy
-                normalised_entropies.append(entropy(normalised_grad_norms.detach().numpy())/np.log(N))
+                normalised_entropies.append(entropy(normalised_grad_norms.cpu().detach().numpy())/np.log(N))
                 # Reset gradients
                 features.grad = None
 
