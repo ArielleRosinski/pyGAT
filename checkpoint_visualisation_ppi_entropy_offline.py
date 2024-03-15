@@ -18,7 +18,7 @@ from scipy.stats import entropy
 from scipy.special import rel_entr
 from tqdm import tqdm
 import networkx as nx
-import seaborn as sns
+import math
 
 from load_data_ppi import load_data_ppi
 from models import GAT
@@ -41,7 +41,7 @@ parser.add_argument('--no-cuda', action='store_true', default=False, help='Disab
 parser.add_argument('--fastmode', action='store_true', default=False, help='Validate during training pass.')
 #parser.add_argument('--sparse', action='store_true', default=False, help='GAT with sparse version or not.')
 parser.add_argument('--dataset', type=str, default='ppi', choices=['ppi'], help='Dataset to use')
-parser.add_argument('--model', type=str, default='GATv2_sparse', choices=['GAT_sparse', 'GAT', 'GATv2', 'GATv2_sparse'], help='GAT model version.')
+parser.add_argument('--model', type=str, default='GAT_sparse', choices=['GAT_sparse', 'GAT', 'GATv2', 'GATv2_sparse'], help='GAT model version.')
 parser.add_argument('--seed', type=int, default=72, help='Random seed.')
 parser.add_argument('--epochs', type=int, default=10000, help='Number of epochs to train.')
 #parser.add_argument('--lr', type=float, default=0.005, help='Initial learning rate.')
@@ -138,92 +138,52 @@ if not os.path.exists(visualisation_path):
 model.eval()
 
 for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
-    # Record gradients w.r.t to features
     unnormalized_output = model(features, adj)
 
     edge = adj.nonzero().t()
     N = adj.shape[0]
 
-    # Convert the adjacency matrix to a NetworkX graph
-    G = nx.from_numpy_array(adj.detach().numpy())
-    # Find cliques in the graph (fully connected subgraphs)
-    cliques = list(nx.find_cliques(G))
-    # Select the largest clique (fully connected subset of nodes)
-    # Note: This selects one of the largest cliques if there are multiple
-    largest_clique = max(cliques, key=len)
+    ######
+    # Code to compute KL divergences between attention heads
+    ######
+    attention_layers = []
+    for layer_name in layers.attention_weights.keys():
+        layer_num = int(layer_name.split("_")[2])
+        if len(attention_layers) < layer_num:
+            attention_layers.append([])
+        attention_layers[layer_num-1].append(layer_name)
 
-    for edge_e in layers.attention_weights.values():
+    node_degrees = np.bincount(edge[0].detach().numpy(), minlength=N)
+    # Uniform entropies for each node
+    uniform_entropies = np.array([np.log(node_degree) if node_degree > 0 else 0. for node_degree in node_degrees])
 
-        attention = compute_attention_matrix(edge_e, N)
-        print(attention.sum(axis=1))
+
+    for layer_num, layer_name_list in enumerate(attention_layers):
+        plt.figure(figsize=(10, 8))
+        plt.hist(uniform_entropies, color='orange', alpha=0.3, label='Uniform entropy', bins=20)
+        for model_name, color in zip(['GATv2_sparse', 'GAT_sparse'],['red','blue']):
+            entropy_attention = None
+            for layer_name in layer_name_list:
+                attention = np.load(f"{visualisation_path}/{model_name}/graph_{batch_idx}_{layer_name}_attention_coefficients.npz")["arr_0"]
+                entropy_attention_layer = np.array([entropy(row) for row in attention])
+                entropy_attention = entropy_attention_layer if entropy_attention is None else entropy_attention_layer + entropy_attention
+            # Mean attention
+            entropy_attention /= len(layer_name_list)
+
+            plt.hist(entropy_attention, color=color, alpha=0.3, label=f'{model_name .split("_")[0]} Attention Entropy', bins=20)
         
+        # Adding labels and title
+        plt.xlabel('Entropy Bin', fontsize=15)
+        plt.ylabel('# of nodes',  fontsize=15)
+        # plt.title(f"Layer {layer_num+1}",  fontsize=15)
+        # Setting the font size for the tick labels on both axes
+        plt.xticks(fontsize=15)
+        plt.yticks(fontsize=15)
+        plt.legend(loc='upper right', fontsize=15)
 
-        adversarial_indices = list(sorted(largest_clique))
-        plt.figure(figsize=(10, 8))
-        attention = attention[np.ix_(adversarial_indices, adversarial_indices)]
-        indices = [20, 18, 17, 32, 33, 16, 35, 15, 37]
-        attention = attention[np.ix_(indices, indices)]
-        ax = sns.heatmap(attention, annot=True, fmt=".2f", cmap='coolwarm', linewidths=0.3, linecolor='white')
-        # Increase the font size of the annotations
-        for t in ax.texts:
-            t.set_fontsize(15)  # Set the fontsize here
-        #plt.title('Attention Weights Heatmap')
-        # Move the x-axis ticks to the top
-        ax.xaxis.tick_top()
-        # Optionally, set the x-axis label position to the top as well
-        ax.xaxis.set_label_position('top')
-        ax.set_xticklabels([f"k{i}" for i in range(len(indices))], fontsize=15)
-        ax.set_yticklabels([f"q{i}" for i in range(len(indices))], fontsize=15)
-        #plt.xlabel('Query Index')
-        #plt.ylabel('Key Index')
-        plt.show()
-
-
-        attention_sorted = []
-        partial_orderings = dict()
-        global_ranking_violations = 0
-        adversarial_indices = []
-        for row_idx, row in tqdm(enumerate(attention)):
-            row_list = [(idx, att_coef) for idx, att_coef in enumerate(row) if att_coef > 0.0]
-            row_list_sorted = list(sorted(row_list, key=lambda x: x[1], reverse=True))
-
-            for i in range(len(row_list_sorted)):
-                for j in range(i+1,len(row_list_sorted)):
-                    order_str = f"{row_list_sorted[i][0]}>{row_list_sorted[j][0]}"
-                    partial_orderings[order_str]=(i,j)
-
-                    reverse_order_str = f"{row_list_sorted[j][0]}>{row_list_sorted[i][0]}"
-
-                    if reverse_order_str in partial_orderings:
-                        global_ranking_violations += 1
-                        if global_ranking_violations < 5:
-                            adversarial_indices += [
-                                partial_orderings[reverse_order_str][0],
-                                partial_orderings[reverse_order_str][1],
-                                i,
-                                j
-                            ]
-
-            attention_sorted.append(row_list_sorted)
-
-        print(f'global ranking violations: {global_ranking_violations}')
-        print(attention.shape)
-        print(len(adversarial_indices))
-        # Create the heatmap
-        plt.figure(figsize=(10, 8))
-        plt.imshow(attention[np.ix_(adversarial_indices, adversarial_indices)], cmap='viridis', interpolation='nearest')
-        plt.colorbar()  # Add a colorbar to a plot
-        plt.title('Attention Weights Heatmap')
-        plt.xlabel('Query Index')
-        plt.ylabel('Key Index')
-        plt.show()
-
-        adversarial_indices = list(sorted(adversarial_indices))
-        plt.figure(figsize=(10, 8))
-        attention = attention[np.ix_(adversarial_indices, adversarial_indices)]
-        for i in range(len(adversarial_indices)):
-            plt.plot(adversarial_indices, attention[i, :])
-        plt.title('Attention Weights Heatmap')
-        plt.xlabel('Query Index')
-        plt.ylabel('Key Index')
-        plt.show()
+        ax = plt.gca()  # Get the current Axes instance
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        # Display the plot
+        plt.savefig(f"{visualisation_path}/graph_{batch_idx+1}_layer_{layer_num+1}_entropy_histogram.png", dpi=300)
+        plt.close()

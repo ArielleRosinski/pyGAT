@@ -178,9 +178,41 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
         #normalised_grad_norms_list.append(normalised_grad_norms)
         # Reset gradients
         features.grad = None
-        
-    # Create the heatmap
+    
+    # Compute entropies grad norms
+    entropies_grad_norm = np.array([entropy(normalised_grad_norm.cpu().detach().numpy()) for normalised_grad_norm in normalised_grad_norms_list])
+    uniform_entropies =  np.array([np.log(len(normalised_grad_norm)) for normalised_grad_norm in normalised_grad_norms_list])
+    # Save for easier reconstruction
+    np.savez(f"{visualisation_path}/graph_{batch_idx}_entropies_grad_norm.npz", entropies_grad_norm)
+    np.savez(f"{visualisation_path}/graph_{batch_idx}_uniform_entropies.npz", uniform_entropies)
+    # Diagram for uniform entropies
     plt.figure(figsize=(10, 8))
+    plt.hist(uniform_entropies, color='orange', alpha=0.5, label='Uniform Entropy', bins=10)
+    plt.hist(entropies_grad_norm, color='blue', alpha=0.5, label='FI Entropy', bins=10)
+
+    # Adding labels and title
+    plt.xlabel('Entropy Bin')
+    plt.ylabel('# of nodes')
+    plt.title('Feature Importance Entropy Histogram')
+    plt.legend(loc='upper right')
+
+    # Display the plot
+    plt.savefig(f"{visualisation_path}/graph_{batch_idx}_fi_entropy_vs_uniform_histogram.png", dpi=300)
+    plt.close()
+
+    # Diagram for uniform entropies
+    plt.figure(figsize=(10, 8))
+    plt.hist(entropies_grad_norm, color='blue', alpha=0.5, label='FI Entropy', bins=10)
+
+    # Adding labels and title
+    plt.xlabel('Entropy bins')
+    plt.ylabel('# of nodes')
+    plt.title('Feature Importance Entropy Histogram')
+    plt.legend(loc='upper right')
+
+    # Display the plot
+    plt.savefig(f"{visualisation_path}/graph_{batch_idx}_fi_entropy_histogram.png", dpi=300)
+    plt.close()
 
     layer_heads = []
     for layer_name in layers.attention_weights.keys():
@@ -220,30 +252,36 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
         entropies_attention = np.array([entropy(attention_tensor.cpu().detach().numpy()) for attention_tensor in normalised_attention_list])
         np.savez(f"{visualisation_path}/layer_{layer_number+1}_graph_{batch_idx}_entropies_attention.npz", entropies_attention)
 
+        
+        plt.hist(uniform_entropies, color='orange', alpha=0.5, label='Uniform Entropy', bins=10)
+        plt.hist(entropies_grad_norm, color='blue', alpha=0.5, label='FI Entropy', bins=10)
+        plt.hist(entropies_attention, color='green', alpha=0.5, label='Attention Entropy', bins=10)
+
+        # Adding labels and title
+        plt.xlabel('Entropy bins')
+        plt.ylabel('# of nodes')
+        plt.title(f"Layer {layer_number+1}")
+        plt.legend(loc='upper right')
+
+        # Display the plot
+        # Display the plot
+        plt.savefig(f"{visualisation_path}/layer_{layer_number+1}_graph_{batch_idx}_entropies_fi_vs_attention.png", dpi=300)
+        plt.close()
+
         # Create the heatmap
-        plt.hist(kendall_tau, alpha=0.5, label=f'Layer {layer_number+1}', bins=20)
+        plt.figure(figsize=(10, 8))
+        plt.hist(kendall_tau, alpha=0.5, label='Kendall Tau Correlation', bins=10)
 
-    # Adding labels and title
-    plt.xlabel('Kendall Tau Correlation bins')
-    plt.ylabel('# of nodes')
+        # Adding labels and title
+        plt.xlabel('Kendall Tau Correlation bins')
+        plt.ylabel('# of nodes')
+        plt.title(f"Layer {layer_number+1}")
+        plt.legend(loc='upper right')
 
-    # Adding labels and title
-    plt.xlabel('Kendall Tau Correlation bins', fontsize=15)
-    plt.ylabel('# of nodes',  fontsize=15)
-    # plt.title(f"Layer {layer_num+1}",  fontsize=15)
-    # Setting the font size for the tick labels on both axes
-    plt.xticks(fontsize=15)
-    plt.yticks(fontsize=15)
-    plt.legend(loc='upper right', fontsize=15)
-
-    ax = plt.gca()  # Get the current Axes instance
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-
-    # Display the plot
-    # Display the plot
-    plt.savefig(f"{visualisation_path}/kendall_tau_layer_graph_{batch_idx}.png", dpi=300)
-    plt.close()
+        # Display the plot
+        # Display the plot
+        plt.savefig(f"{visualisation_path}/layer_{layer_number+1}_graph_{batch_idx}_kendall_tau.png", dpi=300)
+        plt.close()
     
 """
     # Get attentions for last head to get correlations

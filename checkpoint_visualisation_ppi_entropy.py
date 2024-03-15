@@ -41,7 +41,7 @@ parser.add_argument('--no-cuda', action='store_true', default=False, help='Disab
 parser.add_argument('--fastmode', action='store_true', default=False, help='Validate during training pass.')
 #parser.add_argument('--sparse', action='store_true', default=False, help='GAT with sparse version or not.')
 parser.add_argument('--dataset', type=str, default='ppi', choices=['ppi'], help='Dataset to use')
-parser.add_argument('--model', type=str, default='GAT_sparse', choices=['GAT_sparse', 'GAT', 'GATv2', 'GATv2_sparse'], help='GAT model version.')
+parser.add_argument('--model', type=str, default='GATv2_sparse', choices=['GAT_sparse', 'GAT', 'GATv2', 'GATv2_sparse'], help='GAT model version.')
 parser.add_argument('--seed', type=int, default=72, help='Random seed.')
 parser.add_argument('--epochs', type=int, default=10000, help='Number of epochs to train.')
 #parser.add_argument('--lr', type=float, default=0.005, help='Initial learning rate.')
@@ -178,16 +178,23 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
 
         plt.figure(figsize=(10, 8))
         for i in range(NUM_HEADS_PLOT):
-            plt.hist(kl_divergences[i][3], alpha=0.5, label=f'KL divergences between heads {kl_divergences[i][0]+1} and {kl_divergences[i][1]+1}', bins=10)
+            plt.hist(kl_divergences[i][3], alpha=0.5, label=r'$D_{{KL}}(\alpha^{{{}}} || \alpha^{{{}}})$'.format(kl_divergences[i][0]+1, kl_divergences[i][1]+1), bins=20)
 
         # Adding labels and title
-        plt.xlabel('KL Divergence Bin')
-        plt.ylabel('# of nodes')
-        plt.legend(loc='upper right')
-        plt.title(f'Layer {layer_idx+1}')
+        plt.xlabel('KL Divergence Bin', fontsize=15)
+        plt.ylabel('# of nodes',  fontsize=15)
+        # plt.title(f"Layer {layer_num+1}",  fontsize=15)
+        # Setting the font size for the tick labels on both axes
+        plt.xticks(fontsize=15)
+        plt.yticks(fontsize=15)
+        plt.legend(loc='upper right', fontsize=15)
+
+        ax = plt.gca()  # Get the current Axes instance
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
 
         # Display the plot
-        plt.savefig(f"{visualisation_path}/layer_{layer_idx+1}_graph_{batch_idx}_kl_divergences_histogram.png", dpi=300)
+        plt.savefig(f"{visualisation_path}/kl_layer_{layer_idx+1}_graph_{batch_idx}_histogram.png", dpi=300)
         plt.close()
     ######
     # End of code to compute KL divergences between attention heads
@@ -220,6 +227,7 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
 
         # Detach to numpy
         attention = attention.detach().numpy()
+        np.savez(f"{visualisation_path}/graph_{batch_idx}_{module_name}_attention_coefficients.npz", attention)
 
         entropy_attention = np.array([entropy(row) for row in attention])
         # HEAT

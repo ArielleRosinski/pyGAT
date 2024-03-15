@@ -186,10 +186,6 @@ visualisation_path += f"/{args.dataset}"
 if not os.path.exists(visualisation_path):
     os.makedirs(visualisation_path)
 
-visualisation_path += f"/{args.model}"
-if not os.path.exists(visualisation_path):
-    os.makedirs(visualisation_path)
-
 # Diagram for uniform entropies
 plt.figure(figsize=(10, 8))
 plt.hist(uniform_entropies, color='orange', alpha=0.5, label='Uniform Entropy', bins=10)
@@ -261,45 +257,49 @@ for layer_idx, layer_head_names in enumerate(attention_layers):
 ### End of code to compute KL divergences between heads
 #######
 
-for module_name, edge_e in tqdm(layers.attention_weights.items()):
-    sparse_edge_e = torch.sparse_coo_tensor(edge, edge_e, torch.Size([N, N]))
-    e_rowsum = torch.sparse.mm(sparse_edge_e, torch.ones(size=(N,1)))
+attention_layers = []
+for layer_name in layers.attention_weights.keys():
+    layer_num = int(layer_name.split("_")[2])
+    if len(attention_layers) <= layer_num-1:
+        attention_layers.append([])
+    attention_layers[layer_num-1].append(layer_name)
 
-    attention = sparse_edge_e.to_dense()/e_rowsum
-    assert torch.allclose(torch.ones(size=(N,)), attention.sum(dim=1))
+node_degrees = np.bincount(edge[0].detach().numpy(), minlength=N)
+# Uniform entropies for each node
+uniform_entropies = np.array([np.log(node_degree) if node_degree > 0 else 0. for node_degree in node_degrees])
 
-    # Detach to numpy
-    attention = attention.detach().numpy()
-    np.savez(f"{visualisation_path}/{module_name}_attention_coefficients.npz", attention)
 
-    entropy_attention = np.array([entropy(row) for row in attention])
-    # HEAT
+for layer_num, layer_name_list in enumerate(attention_layers):
     plt.figure(figsize=(10, 8))
-    plt.hist(entropy_attention, color='blue', alpha=0.5, label='Attention Entropy', bins=10)
+    plt.hist(uniform_entropies, color='orange', alpha=0.3, label='Uniform entropy', bins=20)
+    for model, color in zip(['GATv2_sparse', 'GAT_sparse'],['red','blue']):
+        entropy_attention = None
+        for layer_name in layer_name_list:
+            attention = np.load(f"{visualisation_path}/{model}/{layer_name}_attention_coefficients.npz")["arr_0"]
+            entropy_attention_layer = np.array([entropy(row) for row in attention])
+            entropy_attention = entropy_attention_layer if entropy_attention is None else entropy_attention_layer + entropy_attention
+        # Mean attention
+        entropy_attention /= len(layer_name_list)
 
+        plt.hist(entropy_attention, color=color, alpha=0.3, label=f'{model.split("_")[0]} Attention Entropy', bins=20)
+    
+    
     # Adding labels and title
-    plt.xlabel('Entropy Bin')
-    plt.ylabel('# of nodes')
-    plt.title(module_name)
-    plt.legend(loc='upper right')
+    plt.xlabel('Entropy Bin', fontsize=15)
+    plt.ylabel('# of nodes',  fontsize=15)
+    # plt.title(f"Layer {layer_num+1}",  fontsize=15)
+    # Setting the font size for the tick labels on both axes
+    plt.xticks(fontsize=15)
+    plt.yticks(fontsize=15)
 
+    # Removing the plot borders
+    # Removing the top and right spines (borders)
+    ax = plt.gca()  # Get the current Axes instance
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    # Setting the font size for the legend
+    # plt.legend(loc='upper right', fontsize=15)
     # Display the plot
-    plt.savefig(f"{visualisation_path}/{module_name}_entropy_histogram.png", dpi=300)
+    plt.savefig(f"{visualisation_path}/layer_{layer_num+1}_entropy_histogram.png", dpi=300)
     plt.close()
-
-    # Create the heatmap
-    plt.figure(figsize=(10, 8))
-    plt.hist(uniform_entropies, alpha=0.5, label='Uniform entropy')
-    plt.hist(entropy_attention, alpha=0.5, label='Entropy attention', bins=10)
-
-    # Adding labels and title
-    plt.xlabel('Entropy Bin')
-    plt.ylabel('# of nodes')
-    plt.title(module_name)
-    plt.legend(loc='upper right')
-
-    # Display the plot
-    # Display the plot
-    plt.savefig(f"{visualisation_path}/{module_name}_vs_uniform_histogram.png", dpi=300)
-    plt.close()
-
