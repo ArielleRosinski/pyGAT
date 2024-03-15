@@ -163,15 +163,15 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
         mask = edge[0, :] == i
         # Extract neighbours
         neighbours_idxs = edge[1, mask]
-        unnormalised_grad_norms = torch.abs(torch.rand(len(neighbours_idxs)))
-        normalised_grad_norms = unnormalised_grad_norms / unnormalised_grad_norms.sum()
-        normalised_grad_norms_list.append(normalised_grad_norms)
+        #unnormalised_grad_norms = torch.abs(torch.rand(len(neighbours_idxs)))
+        #normalised_grad_norms = unnormalised_grad_norms / unnormalised_grad_norms.sum()
+        #normalised_grad_norms_list.append(normalised_grad_norms)
         # Retrieve features gradients
-        #soft_class_i.backward(retain_graph=True)
+        soft_class_i.backward(retain_graph=True)
         # Obtain gradients for the neighbours
-        #grads_features = features.grad.data[neighbours_idxs, :]
-        #unnormalised_grad_norms = torch.norm(grads_features, p=2, dim=1)
-        #normalised_grad_norms = unnormalised_grad_norms / torch.sum(unnormalised_grad_norms)
+        grads_features = features.grad.data[neighbours_idxs, :]
+        unnormalised_grad_norms = torch.norm(grads_features, p=2, dim=1)
+        normalised_grad_norms = unnormalised_grad_norms / torch.sum(unnormalised_grad_norms)
 
         assert abs(normalised_grad_norms.sum().item() - 1.0) < 1e-2
         # Save normalised grad norms
