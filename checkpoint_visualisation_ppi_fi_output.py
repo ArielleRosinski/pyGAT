@@ -175,7 +175,7 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
 
         assert abs(normalised_grad_norms.sum().item() - 1.0) < 1e-2
         # Save normalised grad norms
-        #normalised_grad_norms_list.append(normalised_grad_norms)
+        normalised_grad_norms_list.append(normalised_grad_norms)
         # Reset gradients
         features.grad = None
         
