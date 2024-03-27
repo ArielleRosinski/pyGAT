@@ -152,8 +152,7 @@ for batch_idx, (features, gt_labels, adj) in enumerate(data_loader_test):
     features.requires_grad_()
     unnormalized_output = model(features, adj)
     # Get class
-    temperature = 0.5
-    soft_classes = torch.matmul(torch.softmax(unnormalized_output/temperature, dim=1), torch.arange(0, 121, dtype=torch.float, device=device))
+    soft_classes = torch.norm(unnormalized_output, p=2, dim=1)
 
     normalised_grad_norms_list = []
     for i in tqdm(range(N)):

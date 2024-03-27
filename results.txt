@@ -1,0 +1,30 @@
+Graph: 0, Layer: attention_layer_1_head_1, Entropy: 0.21776974343265584 ± 0.07196351524879968
+Graph: 0, Layer: attention_layer_1_head_2, Entropy: 0.21544404487346752 ± 0.07037196845027428
+Graph: 0, Layer: attention_layer_1_head_3, Entropy: 0.21534429902775162 ± 0.07326273055119484
+Graph: 0, Layer: attention_layer_1_head_4, Entropy: 0.21534429902775162 ± 0.07643850872088155
+Graph: 0, Layer: attention_layer_2_head_1, Entropy: 0.38415935550823316 ± 0.11162387220677249
+Graph: 0, Layer: attention_layer_2_head_2, Entropy: 0.4105355545753953 ± 0.10821166319133622
+Graph: 0, Layer: attention_layer_2_head_3, Entropy: 0.41885466613769917 ± 0.11103243101850725
+Graph: 0, Layer: attention_layer_2_head_4, Entropy: 0.40659774700705 ± 0.09797254771539453
+Graph: 0, Layer: attention_layer_3_head_1, Entropy: 0.5356037556122423 ± 0.11115175979797078
+Graph: 0, Layer: attention_layer_3_head_2, Entropy: 0.5185031775397162 ± 0.11360193699331048
+Graph: 0, Layer: attention_layer_3_head_3, Entropy: 0.513125251759835 ± 0.11321988778075234
+Graph: 0, Layer: attention_layer_3_head_4, Entropy: 0.5283111115022833 ± 0.11417601853810237
+Graph: 0, Layer: attention_layer_3_head_5, Entropy: 0.5069772555958172 ± 0.11654152071625808
+Graph: 0, Layer: attention_layer_3_head_6, Entropy: 0.5257524211884156 ± 0.11309979677172975
+Graph: 1, Layer: attention_layer_1_head_1, Entropy: 0.22203866831377472 ± 0.06831602201560148
+Graph: 1, Layer: attention_layer_1_head_2, Entropy: 0.22077234062081175 ± 0.06899626413065102
+Graph: 1, Layer: attention_layer_1_head_3, Entropy: 0.2204165550580189 ± 0.06982301311271309
+Graph: 1, Layer: attention_layer_1_head_4, Entropy: 0.22950342083989544 ± 0.07232055808321554
+Graph: 1, Layer: attention_layer_2_head_1, Entropy: 0.3917674323410581 ± 0.10428714283544877
+Graph: 1, Layer: attention_layer_2_head_2, Entropy: 0.4129924959503312 ± 0.10396929117409268
+Graph: 1, Layer: attention_layer_2_head_3, Entropy: 0.4204391960007418 ± 0.10336483979480257
+Graph: 1, Layer: attention_layer_2_head_4, Entropy: 0.4114386777779435 ± 0.0908262344934268
+Graph: 1, Layer: attention_layer_3_head_1, Entropy: 0.5419697203035058 ± 0.10053718989255436
+Graph: 1, Layer: attention_layer_3_head_2, Entropy: 0.5247056662298163 ± 0.10359995637195607
+Graph: 1, Layer: attention_layer_3_head_3, Entropy: 0.5181491350854286 ± 0.10389351727902266
+Graph: 1, Layer: attention_layer_3_head_4, Entropy: 0.5317954834383142 ± 0.10371718799927056
+Graph: 1, Layer: attention_layer_3_head_5, Entropy: 0.5117088549210073 ± 0.10783032112507698
+Graph: 1, Layer: attention_layer_3_head_6, Entropy: 0.5298379475829877 ± 0.10245693345172029
+
+0.21597559659040665
